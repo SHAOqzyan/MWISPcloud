@@ -326,7 +326,7 @@ class myDBSCAN(object):
 		:return:
 		"""
 
-		minPeak = peakSigma*self.rms
+
 
 		if saveMarker=="":
 
@@ -377,11 +377,6 @@ class myDBSCAN(object):
 
 
 
-		GoodCount = GoodCount[ GoodIDs>0  ]
-
-		GoodIDs=  GoodIDs[GoodIDs>0 ]
-
-
 		print "Total number of turnks? ",len(ids)
 		print "Total number of Good Trunks? ",len(GoodIDs)
 
@@ -394,7 +389,7 @@ class myDBSCAN(object):
 
 		catTB=newTB.copy()
 
-
+		catTB.remove_row(0)
 
 		runIndex=0
 
@@ -1128,7 +1123,13 @@ G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
 
 
 if 1:
-	doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS2P16Con2.fits",doDBSCAN.TBModel)
+	doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS2P16Con2.fits",doDBSCAN.TBModel, saveMarker="G2650CO12DBCatS2P16Con2" )
+	for i in np.arange(2.5,8,0.5):
+		savename="G2650CO12DBCatS{}P{}Con2".format(i,9)
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS{}P16Con2.fits".format(i),doDBSCAN.TBModel,saveMarker=savename)
+
+	sys.exit()
+
 
 
 if 0:

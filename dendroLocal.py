@@ -375,10 +375,10 @@ if 1:
 	d=Dendrogram.load_from( dendroFITS )
 
 
-	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark+"Ve10", inputD=d ,criteriaUsed=[self.myVrms],scales=[10] )
-	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark+"Ve15", inputD=d ,criteriaUsed=[self.myVrms],scales=[15] )
-	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark+"Ve20", inputD=d ,criteriaUsed=[self.myVrms],scales=[20] )
-	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark+"Ve25", inputD=d ,criteriaUsed=[self.myVrms],scales=[25] )
+	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark="Ve10", inputD=d ,criteriaUsed=[self.myVrms],scales=[10] )
+	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark="Ve15", inputD=d ,criteriaUsed=[self.myVrms],scales=[15] )
+	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark="Ve20", inputD=d ,criteriaUsed=[self.myVrms],scales=[20] )
+	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark="Ve25", inputD=d ,criteriaUsed=[self.myVrms],scales=[25] )
 
 
 
