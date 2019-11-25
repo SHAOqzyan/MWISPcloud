@@ -115,8 +115,11 @@ class MWcloud:
 		trunkCat.write(trunkCatFile, overwrite=True)
 
 		if doSCIMES:
-			self.doSCIMES(COFITS,dendroFile,catFile,   saveMark+"Ve", inputD=d ,criteriaUsed=[self.myVrms],scales=[25] )
-			self.doSCIMES(COFITS,dendroFile,catFile,   saveMark+'VoLu', inputD=d   )
+			self.doSCIMES(COFITS,dendroFile,catFile,   saveMark+"Ve20", inputD=d ,criteriaUsed=[self.myVrms],scales=[20] )
+			self.doSCIMES(COFITS,dendroFile,catFile,   saveMark+"Ve10", inputD=d ,criteriaUsed=[self.myVrms],scales=[10] )
+			self.doSCIMES(COFITS,dendroFile,catFile,   saveMark+"Ve15", inputD=d ,criteriaUsed=[self.myVrms],scales=[15] )
+
+			#self.doSCIMES(COFITS,dendroFile,catFile,   saveMark+'VoLu', inputD=d   )
 
 
 	def produceAssignFITS(self, d, COFITS,  saveFITS  ):

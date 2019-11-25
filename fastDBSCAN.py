@@ -15,7 +15,7 @@ from skimage.morphology import watershed
 import sys
 from skimage.morphology import erosion, dilation
 from scipy.ndimage import label, generate_binary_structure,binary_erosion,binary_dilation
-
+from sklearn.cluster import DBSCAN
 from madda import  myG210
 
 doG210 = myG210()
@@ -89,9 +89,11 @@ class myDBSCAN(object):
 		return  sumAll
 
 
-	def getCoreMask(self,COFITS , min_sigma=2, min_pix=7, connectivity=1 , saveMark="" ):
-		"""
 
+
+	def slowDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=16, connectivity=2 ,region="" ,saveFITS=None ):
+		"""
+		Use the sklearn DBSCAN to calculate, just for comparison, to test the computeDBSCAN is right
 		:param COdata:
 		:param COHead:
 		:param min_sigma:
@@ -100,39 +102,40 @@ class myDBSCAN(object):
 		:param region:
 		:return:
 		"""
-		COdata,COHead=myFITS.readFITS(COFITS)
-		minValue = min_sigma*self.rms
+		###
 
-		COdata[COdata<minValue]=0
+		goodIndices=np.where(COdata>= min_sigma*self.rms   )
 
-		Nz,Ny,Nx  = COdata.shape
-		extendMask = np.zeros([Nz+2,Ny+2,Nx+2] ,dtype=int)
+		coordinates= zip( goodIndices[0] , goodIndices[1] ,goodIndices[2]  )
 
-		extendMask[1:-1,1:-1,1:-1][COdata>=minValue]=1
-
-		s=generate_binary_structure(3,connectivity)
+		#eps=1.5 form connectivity 2,
+		if connectivity==2:
+			db = DBSCAN(eps=1.5  , min_samples= min_pix      ).fit(coordinates)
 
 		if connectivity==1:
-			coreArray=self.sumEdgeByCon1(extendMask)
-
-		if connectivity==2:
-			coreArray=self.sumEdgeByCon2(extendMask)
-
+			db = DBSCAN(eps=1.1  , min_samples= min_pix      ).fit(coordinates)
 		if connectivity==3:
-			coreArray=self.sumEdgeByCon3(extendMask)
+			db = DBSCAN(eps=1.8  , min_samples= min_pix      ).fit(coordinates)
 
-		coreArray = coreArray>=min_pix
-		coreArray[COdata<minValue ]=False #remove falsely  core values
+		labels = db.labels_
+		print min(labels),"minimumLabel?"
+		#u,c= np.unique(labels,return_counts=True)
 
-		coreArray=coreArray+0
+		#print len(u)
+
+		mask=np.zeros_like(COdata)-1
+
+		mask[goodIndices]= labels
+		if saveFITS==None:
+			fits.writeto("dbscanMask1Sigma.fits",mask,header=COHead,overwrite=True)
+
+		else:
+			fits.writeto(saveFITS ,mask,header=COHead,overwrite=True)
 
 
-		fits.writeto(saveMark+"CoreMask.fits",coreArray,header=COHead,overwrite=True )
 
 
-
-
-	def computeDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=7, connectivity=1 ,region=""  ):
+	def computeDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=16, connectivity=2 ,region="" , getMask=False ):
 		"""
 		min_pix the the minimum adjacen number for are core point
 		:param COdata:
@@ -142,16 +145,19 @@ class myDBSCAN(object):
 		:return:
 		"""
 		#pass
+
+
 		minValue = min_sigma*self.rms
 
-		COdata[COdata<minValue]=0
+
 
 		Nz,Ny,Nx  = COdata.shape
 		extendMask = np.zeros([Nz+2,Ny+2,Nx+2] ,dtype=int)
 
-		extendMask[1:-1,1:-1,1:-1][COdata>=minValue]=1
+		extendMask[1:-1,1:-1,1:-1] = COdata>=minValue    #[COdata>=minValue]=1
 
 		s=generate_binary_structure(3,connectivity)
+
 
 		if connectivity==1:
 			coreArray=self.sumEdgeByCon1(extendMask)
@@ -163,25 +169,32 @@ class myDBSCAN(object):
 			coreArray=self.sumEdgeByCon3(extendMask)
 
 		coreArray = coreArray>=min_pix
-		coreArray[COdata<minValue ]=False #remove falsely  core values
-
+		coreArray[ COdata<minValue  ]=False #remove falsely, there is a possibility that, a bad value may have lots of pixels around
 		coreArray=coreArray+0
 
-		allArray=  binary_dilation(coreArray,structure=s) #expand the corepoints according to the structure
+		labeled_core, num_features=label(coreArray,structure=s) #first label core, then expand, otherwise, the expanding would wrongly connected
+		selectExpand= np.logical_and(labeled_core==0, COdata>=minValue  )
+		#expand labeled_core
+		#coreLabelCopy=labeled_core.copy()
 
-		allArray[COdata<minValue ]=False #remove falsely expanded values
-		allArray=allArray+0
+		expandTry = dilation(labeled_core , s  ) # first try to expand, then only keep those region that are not occupied previously
 
-		if 1:
-			labeled_array,num_features=label(allArray,structure=s)
-			saveName="{}dbscanS{}P{}Con{}.fits".format( region,min_sigma,min_pix,connectivity )
-
-
-		else:#no expand,only core array, just for test
-			labeled_array,num_features=label(coreArray,structure=s)
-			saveName="{}dbscanS{}P{}Con{}NoExpand.fits".format(region, min_sigma,min_pix,connectivity )
+		labeled_core[  selectExpand  ] =  expandTry[ selectExpand  ]
 
 
+		#allArray[COdata<minValue ]=False #remove falsely expanded values
+		#allArray=labeled_core+0
+
+
+		labeled_array = labeled_core
+		saveName="{}dbscanS{}P{}Con{}.fits".format( region,min_sigma,min_pix,connectivity )
+
+
+
+
+		if getMask:
+
+			return labeled_array>0 #actually return mask
 
 
 		print num_features,"features found!"
@@ -212,9 +225,10 @@ class myDBSCAN(object):
 		:return:
 		"""
 
+
+
+
 		#Test 668,
-
-
 		#readCat
 
 		clusterCat=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterCat_ComplicateVe.fit")
@@ -225,23 +239,29 @@ class myDBSCAN(object):
 
 		rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
 
-		coreData,coreHead=myFITS.readFITS( "complicatedTestCoreMask.fits" ) #
-
 		rawCO,rawHead=   myFITS.readFITS( rawFITS )
 
 		#the expansion should stars from high coValue, to low CO values, to avoid cloud cross wak bounarires
+		#sCon=generate_binary_structure(3,2)
 
-		for sigmas in [10,9,8,7,6,5,4,3,2]:
+		for sigmas in np.arange(20,1,-1):
 
-			COMask=  rawCO>sigmas*self.rms
+			#produceMask withDBSCAN
+			if sigmas>2:
+				COMask = self.computeDBSCAN( rawCO,rawHead, min_sigma=sigmas, min_pix=9, connectivity=2 ,region="" , getMask=True )
+				print "?????????"
+			else:
+				COMask = self.computeDBSCAN(  rawCO,rawHead, min_sigma=sigmas, min_pix=16, connectivity=2 ,region="" , getMask=True )
+				print "???===????"
 
-			rawAssign=cloudData.copy()
-			for i in range(200):
-				print i,"loop"
+			print np.sum(COMask)
+
+			for i in range(2000):
 				rawAssign=cloudData.copy()
 				cloudData=cloudData+1 #to keep reagion that has no cloud as 0
 
-				d1Try=dilation(cloudData)
+				d1Try=dilation(cloudData  ) #expand with connectivity 1, connectivity 2, expandong two fast
+
 
 
 				assignRegion= np.where(np.logical_and(cloudData==0 , COMask ) )
@@ -252,12 +272,12 @@ class myDBSCAN(object):
 
 				diff= rawAssign-cloudData
 
-				print np.sum(diff ),"difference?"
+				print  "Sigmas: {}, Loop:{}, difference:{}".format(sigmas,i,np.sum(diff))
 				if np.sum(diff )==0:
 					break
 
 
-		fits.writeto("ExpandTest.fits",cloudData ,header=cloudHead,overwrite=True)
+		fits.writeto("expandTest.fits",cloudData ,header=cloudHead,overwrite=True)
 
 
 
@@ -348,7 +368,8 @@ class myDBSCAN(object):
 
 		#count all clusters
 
-		ids,count=np.unique(dataCluster,return_counts=True )
+		#ids,count=np.unique(dataCluster,return_counts=True )
+		ids,count=np.unique(clusterValue1D,return_counts=True )
 
 		GoodIDs=  ids[count>=minPix ]
 
@@ -378,11 +399,12 @@ class myDBSCAN(object):
 		runIndex=0
 
 		for i in  range(len(GoodIDs)) :
-			if i==0:
-				continue
 
 			#i would be the newID
 			newID= GoodIDs[i]
+
+			if newID==0:
+				continue
 
 			pixN=GoodCount[i]
 
@@ -1094,7 +1116,7 @@ class myDBSCAN(object):
 
 doDBSCAN=myDBSCAN()
 
-CO12FITS="/home/qzyan/WORK/myDownloads/testFellwalker/WMSIPDBSCAN/G2650Local30.fits"
+G2650CO12FITS="/home/qzyan/WORK/myDownloads/testFellwalker/WMSIPDBSCAN/G2650Local30.fits"
 DBMaskFITS= "/home/qzyan/WORK/myDownloads/testFellwalker/G2650DB_1_25.fits"
 TaurusCO12FITS="/home/qzyan/WORK/dataDisk/Taurus/t12_new.fits"
 PerCO12="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Per3060.fits"
@@ -1106,17 +1128,44 @@ G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
 
 
 if 1:
+	doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS2P16Con2.fits",doDBSCAN.TBModel)
+
+
+if 0:
+	COData,COHead=myFITS.readFITS( G2650CO12FITS)
+	doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=2,min_pix=16,connectivity=2,region="G2650CO12")
+
+	for i in np.arange(2.5,8,0.5):
+		doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=i,min_pix=9,connectivity=2,region="G2650CO12")
+
+	sys.exit()
+
+
+
+
+
+if 0: #
+	G214COFITS="G214CO12.fits"
+	COData,COHead=myFITS.readFITS( G214COFITS)
+
+	doDBSCAN.computeDBSCAN(COData, COHead,region="G214")
+	doDBSCAN.slowDBSCAN(COData, COHead,region="G214")
+
+
+
+
+	sys.exit()
+
+if 0:
 
 	rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
 
-	doDBSCAN.getCoreMask(rawFITS,saveMark="complicatedTest",connectivity=2,min_sigma=2,min_pix=16)
 
 
 	doDBSCAN.myDilation()
 	#testCOFITS=""
 
 	pass
-
 
 if 0:
 
@@ -1230,15 +1279,6 @@ if 0: #Taurus
 	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=4,min_pix=9,connectivity=2)
 	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=5,min_pix=9,connectivity=2)
 	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=6,min_pix=9,connectivity=2)
-
-
-if 0:
-	COData,COHead=myFITS.readFITS( CO12FITS)
-
-	for i in np.arange(2,8,0.5):
-		doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=i,min_pix=9,connectivity=2)
-
-	sys.exit()
 
 
 
