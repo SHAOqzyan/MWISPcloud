@@ -364,8 +364,28 @@ class MWcloud:
 
 doCloud=MWcloud()
 
-
 if 1:
+
+	COFITS="G2650Local30.fits"
+	dendroFITS="minV3minP1000_dendro.fits"
+	dendroCat= "minV3minP1000_dendroCat.fit"
+
+	Table.read(dendroCat)
+
+	d=Dendrogram.load_from( dendroFITS )
+
+
+	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark+"Ve10", inputD=d ,criteriaUsed=[self.myVrms],scales=[10] )
+	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark+"Ve15", inputD=d ,criteriaUsed=[self.myVrms],scales=[15] )
+	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark+"Ve20", inputD=d ,criteriaUsed=[self.myVrms],scales=[20] )
+	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,   saveMark+"Ve25", inputD=d ,criteriaUsed=[self.myVrms],scales=[25] )
+
+
+
+	#doCloud.doDendro("G2650Local30.fits",minV=3,minPix= 1000,doSCIMES=True  )
+
+
+if 0:
 	doCloud.doDendro("G2650Local30.fits",minV=3,minPix= 1000,doSCIMES=True  )
 
 
