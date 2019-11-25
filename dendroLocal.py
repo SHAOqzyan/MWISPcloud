@@ -17,7 +17,7 @@ from myTree import dendroTree
 # meta data of 12CO
 from scimes import SpectralCloudstering
 
-
+from skimage.morphology import erosion, dilation
 
 class MWcloud:
 
@@ -58,7 +58,7 @@ class MWcloud:
 		self.regionName=regionName
 
 
-	def doDendro(self, COFITS,minV=3 , minPix=8,RMS=0.5,minDelta=3,saveName=None ):
+	def doDendro(self, COFITS,minV=3 , minPix=8,RMS=0.5,minDelta=3,saveName=None,doSCIMES=False ):
 		"""
 		COFITS may not be masedk
 		:param COFITS:
@@ -114,6 +114,9 @@ class MWcloud:
 		print "{} trunks found!".format(len(trunkCat))
 		trunkCat.write(trunkCatFile, overwrite=True)
 
+		if doSCIMES:
+			self.doSCIMES(COFITS,dendroFile,catFile,   saveMark+"Ve", inputD=d ,criteriaUsed=[self.myVrms],scales=[25] )
+			self.doSCIMES(COFITS,dendroFile,catFile,   saveMark+'VoLu', inputD=d   )
 
 
 	def produceAssignFITS(self, d, COFITS,  saveFITS  ):
@@ -289,30 +292,100 @@ class MWcloud:
 		clusterCat.write(  "ClusterCat_{}.fit".format(saveMarker), overwrite=True)
 		cat.write(  "DendroCatExtended_{}.fit".format(saveMarker), overwrite=True)#same as the catlog of dendrogram, but with several extended columns. used to see how good the criterin
 
+	def readFITS(self,COFITS):
+		"""
+
+		:return:
+		"""
+
+		hdu= fits.open(COFITS)[0]
+
+		data=hdu.data
+		head=hdu.header
+
+		return data,head
+
+	def splitTrunkWithSVM(self):
+		"""
+		#because SCIMES removes weak emissions in the envelop of clouds, we need to add them back
+		#one possible way is to use svm to split the trunk, test this con the  /home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits
+
+		:return:
+		"""
+
+		#Test 668,
 
 
+		#readCat
+
+		clusterCat=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterCat_ComplicateVe.fit")
+
+		dendroCat=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/DendroCatExtended_ComplicateVe.fit")
+
+		cloudData,cloudHead =  self.readFITS("/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits")
+
+		rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
+
+		rawCO,rawHead=   self.readFITS( rawFITS )
+
+		COMask= rawCO>1.5
+
+		rawAssign=cloudData.copy()
+		for i in range(200):
+			print i,"loop"
+			rawAssign=cloudData.copy()
+			cloudData=cloudData+1 #to keep reagion that has no cloud as 0
+
+			d1Try=dilation(cloudData)
+
+
+			assignRegion= np.where(np.logical_and(cloudData==0 , COMask ) )
+
+			cloudData[ assignRegion ] = d1Try[ assignRegion ]
+
+			cloudData=cloudData-1
+
+			diff= rawAssign-cloudData
+
+			print np.sum(diff ),"difference?"
+			if np.sum(diff )==0:
+				break
+
+
+		fits.writeto("ExpandTest.fits",cloudData ,header=cloudHead,overwrite=True)
+
+
+
+	def ZZZ(self):
+		pass
 
 doCloud=MWcloud()
-#doCloud.doDendro("G2650Local30.fits",minV=3,minPix=8)
-#doCloud.doDendro("G2650Local30.fits",minV=2,minPix=16)
+
+
+if 1:
+	doCloud.doDendro("G2650Local30.fits",minV=3,minPix= 1000,doSCIMES=True  )
+
+
+
 
 if 0: #G214
 	CO12FITS="/home/qzyan/WORK/myDownloads/testScimes/G214CO12.fits"
 	dendroFITS="/home/qzyan/WORK/myDownloads/testScimes/G214CO12Dendro.fits"
 	dendroCat= "/home/qzyan/WORK/myDownloads/testScimes/G214CO12dendroCat.fit"
 
-if 1: #complicatedTest
+if 0: #complicatedTest
 	CO12FITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest/complicatedTestmasked.fits"
 	dendroFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest/dendroSave500.fits"
 	dendroCat= "/home/qzyan/WORK/myDownloads/testScimes/complicatedTest/dendroSave500.fit"
 
 
 
+	d=Dendrogram.load_from( dendroFITS )
+	criteriaVe=[doCloud.myVrms]
+	scaleVe=[25]
+
+	doCloud.doSCIMES(CO12FITS,dendroFITS,dendroCat,"ComplicateVoLu",  inputD=d)
+	doCloud.doSCIMES(CO12FITS,dendroFITS,dendroCat,"ComplicateVe", criteriaUsed=criteriaVe,scales=scaleVe,inputD=d)
 
 
-d=Dendrogram.load_from( dendroFITS )
-criteriaVe=[doCloud.myVrms]
-scaleVe=[25]
 
-doCloud.doSCIMES(CO12FITS,dendroFITS,dendroCat,"ComplicateVoLu",  inputD=d)
-doCloud.doSCIMES(CO12FITS,dendroFITS,dendroCat,"ComplicateVe", criteriaUsed=criteriaVe,scales=scaleVe,inputD=d)

@@ -1,7 +1,7 @@
 
 import os
 import numpy as np
-from astropy.table import Table
+from astropy.table import Table,vstack
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from astropy.io import fits
@@ -13,8 +13,12 @@ import math
 from myPYTHON import *
 from skimage.morphology import watershed
 import sys
-
+from skimage.morphology import erosion, dilation
 from scipy.ndimage import label, generate_binary_structure,binary_erosion,binary_dilation
+
+from madda import  myG210
+
+doG210 = myG210()
 
 def weighted_avg_and_std(values, weights):
     """
@@ -85,6 +89,48 @@ class myDBSCAN(object):
 		return  sumAll
 
 
+	def getCoreMask(self,COFITS , min_sigma=2, min_pix=7, connectivity=1 , saveMark="" ):
+		"""
+
+		:param COdata:
+		:param COHead:
+		:param min_sigma:
+		:param min_pix:
+		:param connectivity:
+		:param region:
+		:return:
+		"""
+		COdata,COHead=myFITS.readFITS(COFITS)
+		minValue = min_sigma*self.rms
+
+		COdata[COdata<minValue]=0
+
+		Nz,Ny,Nx  = COdata.shape
+		extendMask = np.zeros([Nz+2,Ny+2,Nx+2] ,dtype=int)
+
+		extendMask[1:-1,1:-1,1:-1][COdata>=minValue]=1
+
+		s=generate_binary_structure(3,connectivity)
+
+		if connectivity==1:
+			coreArray=self.sumEdgeByCon1(extendMask)
+
+		if connectivity==2:
+			coreArray=self.sumEdgeByCon2(extendMask)
+
+		if connectivity==3:
+			coreArray=self.sumEdgeByCon3(extendMask)
+
+		coreArray = coreArray>=min_pix
+		coreArray[COdata<minValue ]=False #remove falsely  core values
+
+		coreArray=coreArray+0
+
+
+		fits.writeto(saveMark+"CoreMask.fits",coreArray,header=COHead,overwrite=True )
+
+
+
 
 	def computeDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=7, connectivity=1 ,region=""  ):
 		"""
@@ -141,7 +187,7 @@ class myDBSCAN(object):
 		print num_features,"features found!"
 
 		fits.writeto(saveName, labeled_array, header=COHead, overwrite=True)
-
+		return saveName
 
 
 
@@ -157,6 +203,61 @@ class myDBSCAN(object):
 		labels=watershed(COData,markers)
 		fits.writeto("growMaskPeak3Min1.fits",labels,header=COHead,overwrite=True)
 
+
+	def myDilation(self):
+		"""
+		#because SCIMES removes weak emissions in the envelop of clouds, we need to add them back
+		#one possible way is to use svm to split the trunk, test this con the  /home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits
+
+		:return:
+		"""
+
+		#Test 668,
+
+
+		#readCat
+
+		clusterCat=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterCat_ComplicateVe.fit")
+
+		dendroCat=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/DendroCatExtended_ComplicateVe.fit")
+
+		cloudData,cloudHead = myFITS.readFITS("/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits")
+
+		rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
+
+		coreData,coreHead=myFITS.readFITS( "complicatedTestCoreMask.fits" ) #
+
+		rawCO,rawHead=   myFITS.readFITS( rawFITS )
+
+		#the expansion should stars from high coValue, to low CO values, to avoid cloud cross wak bounarires
+
+		for sigmas in [10,9,8,7,6,5,4,3,2]:
+
+			COMask=  rawCO>sigmas*self.rms
+
+			rawAssign=cloudData.copy()
+			for i in range(200):
+				print i,"loop"
+				rawAssign=cloudData.copy()
+				cloudData=cloudData+1 #to keep reagion that has no cloud as 0
+
+				d1Try=dilation(cloudData)
+
+
+				assignRegion= np.where(np.logical_and(cloudData==0 , COMask ) )
+
+				cloudData[ assignRegion ] = d1Try[ assignRegion ]
+
+				cloudData=cloudData-1
+
+				diff= rawAssign-cloudData
+
+				print np.sum(diff ),"difference?"
+				if np.sum(diff )==0:
+					break
+
+
+		fits.writeto("ExpandTest.fits",cloudData ,header=cloudHead,overwrite=True)
 
 
 
@@ -207,7 +308,12 @@ class myDBSCAN(object):
 
 		minPeak = peakSigma*self.rms
 
-		saveName=saveMarker+"Sigma{}_P{}FastDBSCAN.fit".format(rms,minPix)
+		if saveMarker=="":
+
+			saveName= "Sigma{}_P{}FastDBSCAN.fit".format(rms,minPix)
+
+		else:
+			saveName=saveMarker+".fit"
 
 		clusterTBOld=Table.read( TBModel )
 
@@ -467,9 +573,17 @@ class myDBSCAN(object):
 
 
 		axArea=fig.add_subplot(1,2,1)
+
+
+
 		for eachTBF,eachLab in zip(TBFiles,labelStr):
 			tb=Table.read(eachTBF)
+
+			tb=self.removeWrongEdges(tb)
+
 			TBList.append( tb )
+
+
 			goodT=tb
 
 
@@ -548,6 +662,340 @@ class myDBSCAN(object):
 
 
 
+	def drawAreaDistribute(self,TBName,region=""):
+		"""
+
+		:return:
+		"""
+
+		TB=Table.read( TBName )
+
+		TBLOcal=Table.read("DBSCAN35_9Sigma1_P1FastDBSCAN.fit")
+		TBAll=vstack([TB,TBLOcal ])
+
+		areaEdges=np.linspace(0,6,1000)
+		areaCenter=self.getEdgeCenter( areaEdges )
+
+
+
+		fig=plt.figure(figsize=(12,6))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+		axArea=fig.add_subplot(1,1,1)
+
+		##########
+		goodT=TB
+
+		if "pixN" in goodT.colnames:
+
+			goodT=goodT[ goodT["pixN"]>=16 ]
+			goodT=goodT[ goodT["peak"]>=1.5 ]
+		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5, label=region  )
+
+
+		self.getAlphaWithMCMC( goodT["area_exact"] )
+
+		###############
+
+ 		goodT=TBAll
+
+		if "pixN" in goodT.colnames:
+
+			goodT=goodT[ goodT["pixN"]>=16 ]
+			goodT=goodT[ goodT["peak"]>=1.5 ]
+		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5, label="All"  )
+
+
+
+		###############
+ 		goodT=TBLOcal
+
+		if "pixN" in goodT.colnames:
+
+			goodT=goodT[ goodT["pixN"]>=16 ]
+			goodT=goodT[ goodT["peak"]>=1.5 ]
+		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="Velocity range (0-30 km/s)"  )
+
+
+
+
+
+
+
+
+
+
+		###############
+
+		axArea.set_yscale('log')
+		axArea.set_xscale('log')
+		axArea.set_xlabel(r"Area (deg$^2$)")
+		axArea.set_ylabel(r"Bin number of trunks ")
+
+
+
+		axArea.legend()
+		axArea.set_title("Plot of Area distribution with DBSCAN")
+
+		plt.savefig( region+"dbscanArea.png" ,  bbox_inches='tight',dpi=300)
+
+
+	def getAlphaWithMCMC(self,areaArray,minArea=0.03,maxArea=1. ):
+		"""
+		areaArray should be in square armin**2
+		:param areaArray:
+		:param minArea:
+		:param maxArea:
+		:return:
+		"""
+
+		print "Fitting index with MCMC..."
+		areaArray=areaArray/3600.
+		select=np.logical_and( areaArray>minArea, areaArray<maxArea)
+		rawArea =   areaArray[ select ]
+
+		doG210.fitPowerLawWithMCMCcomponent1(rawArea,minV=minArea,maxV=maxArea)
+
+
+
+	def drawSumDistribute(self,TBName,region=""):
+		"""
+		:return:
+		"""
+
+		TB=Table.read( TBName )
+
+		TBLOcal=Table.read("DBSCAN35_9Sigma1_P1FastDBSCAN.fit")
+		TBAll=vstack([TB,TBLOcal ])
+
+
+
+		goodT=TB
+
+
+
+
+
+		fig=plt.figure(figsize=(12,6))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+		axArea=fig.add_subplot(1,1,1)
+
+		##########
+		pixNCol =goodT["flux"]
+
+		logPixN=np.log10( pixNCol  )
+
+		print min( logPixN  ),max( logPixN  )
+
+		areaEdges=np.linspace( min( logPixN  ),max( logPixN  ) ,100)
+		areaCenter=self.getEdgeCenter( areaEdges )
+
+		binN,binEdges=np.histogram( logPixN , bins=areaEdges  )
+
+
+		drawBind=binN[binN>0]
+		drawCenter= areaCenter[binN>0]
+
+		axArea.plot(  drawCenter , np.log10(drawBind) , 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="Flux"  )
+
+		select=np.logical_and( drawCenter<6, drawCenter>4 )
+		x=drawCenter[ select ]   #np.log(drawCenter)
+		y=np.log10(drawBind  )[ select]
+
+		#print np.polyfit(x,y,1)
+
+		###########################
+
+
+
+		if 0:
+			tbVox=goodT[ goodT["pixN"]>16  ]
+			pixNCol =tbVox["pixN"]
+
+			logPixN=np.log10( pixNCol  )
+
+			print min( logPixN  ),max( logPixN  )
+
+			areaEdges=np.linspace( min( logPixN  ),max( logPixN  ) ,100)
+			areaCenter=self.getEdgeCenter( areaEdges )
+
+			binN,binEdges=np.histogram( logPixN , bins=areaEdges  )
+
+
+			drawBind=binN[binN>0]
+			drawCenter= areaCenter[binN>0]
+
+			axArea.plot(  drawCenter , np.log10(drawBind) , 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="Voxel"  )
+
+			select=np.logical_and( drawCenter<4, drawCenter>1.5 )
+			x=drawCenter[ select ]   #np.log(drawCenter)
+			y=np.log10(drawBind  )[ select]
+
+			print np.polyfit(x,y,1)
+
+		###########################
+
+
+
+
+		##########
+		tbVox=goodT
+		pixNCol =tbVox["area_exact"]
+
+		logPixN=np.log10( pixNCol  )
+		print "draw areas"
+		print min( logPixN  ),max( logPixN  )
+
+		areaEdges=np.linspace( min( logPixN  ),max( logPixN  ) ,15)
+
+		print  areaEdges
+
+		areaCenter=self.getEdgeCenter( areaEdges )
+
+		binN,binEdges=np.histogram( logPixN , bins=areaEdges  )
+
+
+		drawBind=binN[binN>0]
+		drawCenter= areaCenter[binN>0]
+
+		axArea.plot(  drawCenter , np.log10(drawBind) , 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="area exact aa "  )
+
+		select=np.logical_and( drawCenter<4, drawCenter>1.5  )
+
+
+		x=drawCenter[ select ]   #np.log(drawCenter)
+		y=np.log10(drawBind  )[ select]
+
+		a= np.polyfit(x,y,1)
+		p=np.poly1d(a)
+		axArea.plot(  drawCenter ,  p(drawCenter) , 'o-'  , markersize=1, lw=0.8,  alpha= 0.5   )
+
+		print a
+		###########################
+
+
+
+
+
+
+
+
+		axArea.set_xlabel(r"Voxel Number")
+		axArea.set_ylabel(r"Bin number of trunks ")
+
+
+
+		axArea.legend()
+		axArea.set_title("Plot of Pixel distribution with DBSCAN")
+
+		plt.savefig( region+"dbscanTotalPixel.png" ,  bbox_inches='tight',dpi=300)
+
+
+
+
+
+	def drawPixNDistribute(self,TBName,region=""):
+		"""
+
+		:return:
+		"""
+
+		TB=Table.read( TBName )
+
+		TBLOcal=Table.read("DBSCAN35_9Sigma1_P1FastDBSCAN.fit")
+		TBAll=vstack([TB,TBLOcal ])
+
+
+
+		goodT=TB
+		goodT=goodT[ goodT["pixN"]>=16 ]
+
+		pixNCol =goodT["pixN"]
+
+		logPixN=np.log10( pixNCol  )
+
+		print logPixN
+
+
+
+		areaEdges=np.linspace( min( logPixN  ),max( logPixN  ) ,100)
+		areaCenter=self.getEdgeCenter( areaEdges )
+
+
+
+		fig=plt.figure(figsize=(12,6))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+		axArea=fig.add_subplot(1,1,1)
+
+		##########
+
+		binN,binEdges=np.histogram( logPixN , bins=areaEdges  )
+
+
+		drawBind=binN[binN>0]
+		drawCenter= areaCenter[binN>0]
+
+		axArea.plot(  drawCenter , np.log10(drawBind) , 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label=" ??"  )
+
+		select=np.logical_and( drawCenter<4, drawCenter>1.5 )
+		x=drawCenter[ select ]   #np.log(drawCenter)
+		y=np.log(drawBind  )[ select]
+
+		print np.polyfit(x,y,1)
+
+		###############
+
+
+		axArea.set_xlabel(r"Voxel Number")
+		axArea.set_ylabel(r"Bin number of trunks ")
+
+
+
+		axArea.legend()
+		axArea.set_title("Plot of Pixel distribution with DBSCAN")
+
+		plt.savefig( region+"dbscanTotalPixel.png" ,  bbox_inches='tight',dpi=300)
+
+
+
+
+
+	def roughFit(self,centers,bins ):
+		"""
+
+		:return:
+		"""
+		y= bins[bins>0 ]  # areaCenter[binN>0]
+		x=  centers[ bins>0  ]
+
+
+
+
+		x1= x[x<= 0.1]  # areaCenter[binN>0]
+		y1=  y[x<= 0.1 ]
+
+
+		x2= x1[x1>=0.005 ]  # areaCenter[binN>0]
+		y2=  y1[x1>= 0.005 ]
+
+		x=np.log10(x2)
+		y=np.log10(y2)
+
+
+		print x
+		print y
+
+		print np.polyfit(x,y,1)
+
+
+		return
+
+
 
 
 	def drawTrueArea(self):
@@ -596,6 +1044,50 @@ class myDBSCAN(object):
 
 
 
+	def removeWrongEdges(self,TB):
+
+
+		processTB=TB.copy()
+
+		#remove cloudsThat touches the noise edge of the fits
+
+
+		#part1= processTB[ np.logical_and( processTB["x_cen"]>=2815 ,processTB["y_cen"]>= 1003  )   ] #1003, 3.25
+
+		#part2= processTB[ np.logical_and( processTB["x_cen"]<= 55 ,processTB["y_cen"]>= 1063  )   ] #1003, 3.25
+
+
+		part1= processTB[ np.logical_or( processTB["x_cen"]< 2815 ,processTB["y_cen"] <1003  )   ] #1003, 3.25
+
+		part2= part1[ np.logical_or( part1["x_cen"]>  55 ,part1["y_cen"]< 1063  )   ] #1003, 3.25
+
+		return part2
+
+
+		#reject them all
+
+ 		newTB=  vstack([processTB,part1,part2])
+
+		ids,counts=np.unique(newTB["_idx"],return_counts=True)
+
+		goodIDs=ids[counts<2 ]
+
+
+		empty=Table( processTB[0])
+		empty.remove_row(0)
+
+
+
+		for eachR in processTB:
+			if eachR["_idx"] in goodIDs:
+				empty.add_row(eachR)
+
+
+		return  empty
+
+
+
+
 	def ZZ(self):
 		pass
 
@@ -605,9 +1097,125 @@ doDBSCAN=myDBSCAN()
 CO12FITS="/home/qzyan/WORK/myDownloads/testFellwalker/WMSIPDBSCAN/G2650Local30.fits"
 DBMaskFITS= "/home/qzyan/WORK/myDownloads/testFellwalker/G2650DB_1_25.fits"
 TaurusCO12FITS="/home/qzyan/WORK/dataDisk/Taurus/t12_new.fits"
+PerCO12="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Per3060.fits"
+
+localCO13="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Local30CO13.fits"
+
+G210CO12="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO12sm.fits"
+G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
 
 
-if 1:#Example
+if 1:
+
+	rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
+
+	doDBSCAN.getCoreMask(rawFITS,saveMark="complicatedTest",connectivity=2,min_sigma=2,min_pix=16)
+
+
+	doDBSCAN.myDilation()
+	#testCOFITS=""
+
+	pass
+
+
+if 0:
+
+
+	#doDBSCAN.drawDBSCANNumber()
+	doDBSCAN.drawDBSCANArea()
+
+
+
+
+if 0:# DBSCAN for G210
+	region="G210CO13"
+
+	processFITS=G210CO13
+
+	doDBSCAN.rms=0.25
+
+
+	if 1:#find clouds
+		COData,COHead=myFITS.readFITS( processFITS)
+
+		for sigmas in [3,4,5]:
+			saveName=doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=sigmas, min_pix=9,connectivity=2, region=region)
+
+			doDBSCAN.getCatFromLabelArray(processFITS, saveName , doDBSCAN.TBModel  ,  rms=1,minPix=1 , saveMarker=region+"DBSCAN{}_9".format(sigmas)   )
+
+	sys.exit()
+
+if 0: #Draw G210
+	#draw perseus
+	doDBSCAN.drawAreaDistribute("Local13DBSCAN4_9.fit"  )
+
+	#doDBSCAN.drawAreaDistribute("G210CO13DBSCAN4_9.fit" ,region="G210CO13" )
+	sys.exit()
+
+
+
+if 0:# DBSCAN for CO13
+	region="Local13"
+	doDBSCAN.rms=0.25
+
+
+	if 0:#find clouds
+		COData,COHead=myFITS.readFITS( localCO13)
+
+		for sigmas in [3,4,5]:
+			doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=sigmas, min_pix=9,connectivity=2, region=region)
+
+		sys.exit()
+
+	else:#calcatelog
+
+		doDBSCAN.getCatFromLabelArray(localCO13,  "Local13dbscanS3P9Con2.fits" , doDBSCAN.TBModel  ,  rms=1,minPix=1 , saveMarker=region+"DBSCAN3_9"  )
+		doDBSCAN.getCatFromLabelArray(localCO13,  "Local13dbscanS4P9Con2.fits" , doDBSCAN.TBModel  ,  rms=1,minPix=1 , saveMarker=region+"DBSCAN4_9"  )
+		doDBSCAN.getCatFromLabelArray(localCO13,  "Local13dbscanS5P9Con2.fits" , doDBSCAN.TBModel  ,  rms=1,minPix=1 , saveMarker=region+"DBSCAN5_9"  )
+
+
+
+if 0:
+	#draw perseus
+	#doDBSCAN.drawAreaDistribute("DBSCAN3_9.fit"  )
+
+	doDBSCAN.drawAreaDistribute("minV3minP16_dendroCatTrunk.fit" , region="Perseus" )
+
+
+
+	#doDBSCAN.drawSumDistribute("DBSCAN3_9Sigma1_P1FastDBSCAN.fit"  )
+
+
+	#doDBSCAN.drawSumDistribute("DBSCAN3_9.fit"  )
+
+
+
+	#doDBSCAN.drawSumDistribute("minV3minP16_dendroCatTrunk.fit"  )
+	#doDBSCAN.drawDBSCANArea()
+
+	sys.exit()
+
+
+
+if 0:# DBSCAN for perseus
+	region="PerG2650"
+	PerCO12="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Per3060.fits"
+
+	if 0:#find clouds
+
+
+		COData,COHead=myFITS.readFITS( PerCO12)
+		doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=4,min_pix=9,connectivity=2, region=region)
+		doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=5,min_pix=9,connectivity=2, region=region)
+
+		sys.exit()
+	else:#calcatelog
+
+		doDBSCAN.getCatFromLabelArray(PerCO12,  "PerG2650dbscanS3P9Con2.fits" , doDBSCAN.TBModel  ,  rms=1,minPix=1 , saveMarker="DBSCAN3_9"  )
+		doDBSCAN.getCatFromLabelArray(PerCO12,  "PerG2650dbscanS4P9Con2.fits" , doDBSCAN.TBModel  ,  rms=1,minPix=1 , saveMarker="DBSCAN4_9"  )
+		doDBSCAN.getCatFromLabelArray(PerCO12,  "PerG2650dbscanS5P9Con2.fits" , doDBSCAN.TBModel  ,  rms=1,minPix=1 , saveMarker="DBSCAN5_9"  )
+
+if 0:#Example
 	doDBSCAN.rms=0.5
 	COData,COHead=myFITS.readFITS( CO12FITS)
 	doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=i,min_pix=9,connectivity=2)
@@ -655,7 +1263,7 @@ if 0:
 	import sys
 	sys.exit()
 
-if 1:
+if 0:
 	COData,COHead=myFITS.readFITS( CO12FITS)
 
 	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=1,min_pix=25,connectivity=3)
@@ -666,12 +1274,6 @@ if 1:
 	doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=6,min_pix=9,connectivity=2)
 
 
-
-if 0:
-	#doDBSCAN.maskByGrow(CO12FITS)
-	#doDBSCAN.drawTrueArea()
-	doDBSCAN.drawDBSCANNumber()
-	doDBSCAN.drawDBSCANArea()
 
 
 
