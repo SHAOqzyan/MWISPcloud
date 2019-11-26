@@ -389,6 +389,23 @@ if 1:
 	doCloud.doDendro("G2650Local30.fits",minV=3.5,minPix= 8,doSCIMES=False  )
 	doCloud.doDendro("G2650Local30.fits",minV=3.5,minPix= 16,doSCIMES=False  )
 
+	doCloud.doDendro("G2650Local30.fits",minV=4.5,minPix= 8,doSCIMES=False  )
+	doCloud.doDendro("G2650Local30.fits",minV=4.5,minPix= 16,doSCIMES=False  )
+
+	doCloud.doDendro("G2650Local30.fits",minV=5.5,minPix= 8,doSCIMES=False  )
+	doCloud.doDendro("G2650Local30.fits",minV=5.5,minPix= 16,doSCIMES=False  )
+
+	doCloud.doDendro("G2650Local30.fits",minV=6.5,minPix= 8,doSCIMES=False  )
+	doCloud.doDendro("G2650Local30.fits",minV=5.5,minPix= 16,doSCIMES=False  )
+
+	doCloud.doDendro("G2650Local30.fits",minV=7 ,minPix= 8,doSCIMES=False  )
+	doCloud.doDendro("G2650Local30.fits",minV=7 ,minPix= 16,doSCIMES=False  )
+
+
+	doCloud.doDendro("G2650Local30.fits",minV=7.5,minPix= 8,doSCIMES=False  )
+	doCloud.doDendro("G2650Local30.fits",minV=7.5,minPix= 16,doSCIMES=False  )
+
+
 
 if 0: #G214
 	CO12FITS="/home/qzyan/WORK/myDownloads/testScimes/G214CO12.fits"
