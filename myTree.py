@@ -195,9 +195,10 @@ class dendroTree:
 		mean,std=weighted_avg_and_std( subTB['v_cen'].data  )
 
 		#return   6*std/1000.,  np.sum( subTB["flux"]  ),len(subTB)
-		return  dv/1000.,  np.sum( subTB["flux"]  ),len(subTB)
+		#return  dv/1000.,  np.sum( subTB["flux"]  ),len(subTB)
 
- 				
+		return  dv*0.2,  np.sum( subTB["flux"]  ),len(subTB)
+
 	def getTrunkID(self,ID):
 		
 		"""

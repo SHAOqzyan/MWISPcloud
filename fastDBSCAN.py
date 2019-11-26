@@ -1126,7 +1126,7 @@ if 1:
 	doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS2P16Con2.fits",doDBSCAN.TBModel, saveMarker="G2650CO12DBCatS2P16Con2" )
 	for i in np.arange(2.5,8,0.5):
 		savename="G2650CO12DBCatS{}P{}Con2".format(i,9)
-		doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS{}P16Con2.fits".format(i),doDBSCAN.TBModel,saveMarker=savename)
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS{}P9Con2.fits".format(i),doDBSCAN.TBModel,saveMarker=savename)
 
 	sys.exit()
 
