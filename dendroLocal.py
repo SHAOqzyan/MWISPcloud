@@ -364,7 +364,7 @@ class MWcloud:
 
 doCloud=MWcloud()
 
-if 1:
+if 0:
 
 	COFITS="G2650Local30.fits"
 	dendroFITS="minV3minP1000_dendro.fits"
@@ -385,10 +385,9 @@ if 1:
 	#doCloud.doDendro("G2650Local30.fits",minV=3,minPix= 1000,doSCIMES=True  )
 
 
-if 0:
-	doCloud.doDendro("G2650Local30.fits",minV=3,minPix= 1000,doSCIMES=True  )
-
-
+if 1:
+	doCloud.doDendro("G2650Local30.fits",minV=3.5,minPix= 8,doSCIMES=False  )
+	doCloud.doDendro("G2650Local30.fits",minV=3.5,minPix= 16,doSCIMES=False  )
 
 
 if 0: #G214

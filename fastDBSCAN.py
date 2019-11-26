@@ -217,7 +217,7 @@ class myDBSCAN(object):
 		fits.writeto("growMaskPeak3Min1.fits",labels,header=COHead,overwrite=True)
 
 
-	def myDilation(self):
+	def myDilation(self,):
 		"""
 		#because SCIMES removes weak emissions in the envelop of clouds, we need to add them back
 		#one possible way is to use svm to split the trunk, test this con the  /home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits
@@ -552,20 +552,22 @@ class myDBSCAN(object):
 
 	def drawDBSCANArea(self):
 
-		TB2_16= "DBSCAN2_16Sigma1_P1FastDBSCAN.fit"
+		TB2_16= "G2650CO12DBCatS2P16Con2.fit"
 		#TB2_16= "DBSCAN2_9Sigma1_P1FastDBSCAN.fit"
-		TB25_9="DBSCAN25_9Sigma1_P1FastDBSCAN.fit"
-		TB35_9="DBSCAN35_9Sigma1_P1FastDBSCAN.fit"
-		TB45_9="DBSCAN45_9Sigma1_P1FastDBSCAN.fit"
-		TB55_9="DBSCAN55_9Sigma1_P1FastDBSCAN.fit"
-		TB65_9="DBSCAN65_9Sigma1_P1FastDBSCAN.fit"
-		TB75_9="DBSCAN75_9Sigma1_P1FastDBSCAN.fit"
+		TB25_9="G2650CO12DBCatS2.5P9Con2.fit"
+		TB35_9="G2650CO12DBCatS3.5P9Con2.fit"
+		TB45_9="G2650CO12DBCatS4.5P9Con2.fit"
+		TB55_9="G2650CO12DBCatS5.5P9Con2.fit"
+		TB65_9="G2650CO12DBCatS6.5P9Con2.fit"
+		TB75_9="G2650CO12DBCatS7.5P9Con2.fit"
 
-		TB3_9= "DBSCAN3_9Sigma1_P1FastDBSCAN.fit"
-		TB4_9= "DBSCAN4_9Sigma1_P1FastDBSCAN.fit"
-		TB5_9= "DBSCAN5_9Sigma1_P1FastDBSCAN.fit"
-		TB6_9= "DBSCAN6_9Sigma1_P1FastDBSCAN.fit"
-		TB7_9= "DBSCAN7_9Sigma1_P1FastDBSCAN.fit"
+		TB3_9= "G2650CO12DBCatS3.0P9Con2.fit"
+		TB4_9= "G2650CO12DBCatS4.0P9Con2.fit"
+		TB5_9= "G2650CO12DBCatS5.0P9Con2.fit"
+		TB6_9= "G2650CO12DBCatS6.0P9Con2.fit"
+		TB7_9= "G2650CO12DBCatS7.0P9Con2.fit"
+
+
 
 		TBFiles=[TB2_16,TB25_9,TB3_9, TB35_9, TB4_9, TB45_9,TB5_9, TB55_9, TB6_9 , TB65_9, TB7_9, TB75_9   ]
 
@@ -628,20 +630,21 @@ class myDBSCAN(object):
 
 	def drawDBSCANNumber(self):
 
-		TB2_16= "DBSCAN2_16Sigma1_P1FastDBSCAN.fit"
+		TB2_16= "G2650CO12DBCatS2P16Con2.fit"
 		#TB2_16= "DBSCAN2_9Sigma1_P1FastDBSCAN.fit"
-		TB25_9="DBSCAN25_9Sigma1_P1FastDBSCAN.fit"
-		TB35_9="DBSCAN35_9Sigma1_P1FastDBSCAN.fit"
-		TB45_9="DBSCAN45_9Sigma1_P1FastDBSCAN.fit"
-		TB55_9="DBSCAN55_9Sigma1_P1FastDBSCAN.fit"
-		TB65_9="DBSCAN65_9Sigma1_P1FastDBSCAN.fit"
-		TB75_9="DBSCAN75_9Sigma1_P1FastDBSCAN.fit"
+		TB25_9="G2650CO12DBCatS2.5P9Con2.fit"
+		TB35_9="G2650CO12DBCatS3.5P9Con2.fit"
+		TB45_9="G2650CO12DBCatS4.5P9Con2.fit"
+		TB55_9="G2650CO12DBCatS5.5P9Con2.fit"
+		TB65_9="G2650CO12DBCatS6.5P9Con2.fit"
+		TB75_9="G2650CO12DBCatS7.5P9Con2.fit"
 
-		TB3_9= "DBSCAN3_9Sigma1_P1FastDBSCAN.fit"
-		TB4_9= "DBSCAN4_9Sigma1_P1FastDBSCAN.fit"
-		TB5_9= "DBSCAN5_9Sigma1_P1FastDBSCAN.fit"
-		TB6_9= "DBSCAN6_9Sigma1_P1FastDBSCAN.fit"
-		TB7_9= "DBSCAN7_9Sigma1_P1FastDBSCAN.fit"
+		TB3_9= "G2650CO12DBCatS3.0P9Con2.fit"
+		TB4_9= "G2650CO12DBCatS4.0P9Con2.fit"
+		TB5_9= "G2650CO12DBCatS5.0P9Con2.fit"
+		TB6_9= "G2650CO12DBCatS6.0P9Con2.fit"
+		TB7_9= "G2650CO12DBCatS7.0P9Con2.fit"
+
 
 		TBFiles=[TB2_16,TB25_9,TB3_9, TB35_9, TB4_9, TB45_9,TB5_9, TB55_9, TB6_9 , TB65_9, TB7_9, TB75_9   ]
 		TBList=[]
@@ -1122,11 +1125,14 @@ G210CO12="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO12sm.fits"
 G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
 
 
-if 1:
-	doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS2P16Con2.fits",doDBSCAN.TBModel, saveMarker="G2650CO12DBCatS2P16Con2" )
-	for i in np.arange(2.5,8,0.5):
-		savename="G2650CO12DBCatS{}P{}Con2".format(i,9)
-		doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS{}P9Con2.fits".format(i),doDBSCAN.TBModel,saveMarker=savename)
+
+
+
+if 0:
+	#doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS2P16Con2.fits",doDBSCAN.TBModel, saveMarker="G2650CO12DBCatS2P16Con2" )
+	for i in np.arange(2 ,8,0.5):
+		savename="G2650CO12DBCatS{}P{}Con2".format(i,8)
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS{}P8Con2.fits".format(i),doDBSCAN.TBModel,saveMarker=savename)
 
 	sys.exit()
 
@@ -1134,10 +1140,10 @@ if 1:
 
 if 0:
 	COData,COHead=myFITS.readFITS( G2650CO12FITS)
-	doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=2,min_pix=16,connectivity=2,region="G2650CO12")
+	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=2,min_pix=16,connectivity=2,region="G2650CO12")
 
-	for i in np.arange(2.5,8,0.5):
-		doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=i,min_pix=9,connectivity=2,region="G2650CO12")
+	for i in np.arange(2 ,8,0.5):
+		doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=i,min_pix=8,connectivity=2,region="G2650CO12")
 
 	sys.exit()
 
@@ -1171,7 +1177,7 @@ if 0:
 if 0:
 
 
-	#doDBSCAN.drawDBSCANNumber()
+	doDBSCAN.drawDBSCANNumber()
 	doDBSCAN.drawDBSCANArea()
 
 
@@ -1189,15 +1195,15 @@ if 0:# DBSCAN for G210
 		COData,COHead=myFITS.readFITS( processFITS)
 
 		for sigmas in [3,4,5]:
-			saveName=doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=sigmas, min_pix=9,connectivity=2, region=region)
+			saveName=doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=sigmas, min_pix=8,connectivity=2, region=region)
 
-			doDBSCAN.getCatFromLabelArray(processFITS, saveName , doDBSCAN.TBModel  ,  rms=1,minPix=1 , saveMarker=region+"DBSCAN{}_9".format(sigmas)   )
+			doDBSCAN.getCatFromLabelArray(processFITS, saveName , doDBSCAN.TBModel  ,  rms=1,minPix=1 , saveMarker=region+"DBSCAN{}_8".format(sigmas)   )
 
 	sys.exit()
 
-if 0: #Draw G210
+if 1: #Draw G210
 	#draw perseus
-	doDBSCAN.drawAreaDistribute("Local13DBSCAN4_9.fit"  )
+	doDBSCAN.drawAreaDistribute("G2650CO12DBCatS7.5P9Con2.fit"  )
 
 	#doDBSCAN.drawAreaDistribute("G210CO13DBSCAN4_9.fit" ,region="G210CO13" )
 	sys.exit()
