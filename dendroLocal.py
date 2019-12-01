@@ -18,7 +18,8 @@ from myTree import dendroTree
 from scimes import SpectralCloudstering
 
 from skimage.morphology import erosion, dilation
-
+import sys
+sys.setrecursionlimit(1000000)
 class MWcloud:
 
 
@@ -364,7 +365,7 @@ class MWcloud:
 
 doCloud=MWcloud()
 
-if 1:
+if 0:
 
 	COFITS="G2650Local30.fits"
 	dendroFITS="minV3minP16_dendro.fits"
