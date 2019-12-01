@@ -17,6 +17,9 @@ from skimage.morphology import erosion, dilation
 from scipy.ndimage import label, generate_binary_structure,binary_erosion,binary_dilation
 from sklearn.cluster import DBSCAN
 from madda import  myG210
+from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
+
+
 
 doG210 = myG210()
 
@@ -217,7 +220,7 @@ class myDBSCAN(object):
 		fits.writeto("growMaskPeak3Min1.fits",labels,header=COHead,overwrite=True)
 
 
-	def myDilation(self,):
+	def myDilation(self,scimesFITS,rawCOFITS,startSigma=20,endSigma=2,saveName=""):
 		"""
 		#because SCIMES removes weak emissions in the envelop of clouds, we need to add them back
 		#one possible way is to use svm to split the trunk, test this con the  /home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits
@@ -225,44 +228,31 @@ class myDBSCAN(object):
 		:return:
 		"""
 
+		#cloudData,cloudHead = myFITS.readFITS("/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits")
 
+		cloudData,cloudHead = myFITS.readFITS(scimesFITS)
 
+		#rawFITS= rawCOFITS #"/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
 
-		#Test 668,
-		#readCat
-
-		clusterCat=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterCat_ComplicateVe.fit")
-
-		dendroCat=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/DendroCatExtended_ComplicateVe.fit")
-
-		cloudData,cloudHead = myFITS.readFITS("/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits")
-
-		rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
-
-		rawCO,rawHead=   myFITS.readFITS( rawFITS )
+		rawCO,rawHead=   myFITS.readFITS( rawCOFITS )
 
 		#the expansion should stars from high coValue, to low CO values, to avoid cloud cross wak bounarires
 		#sCon=generate_binary_structure(3,2)
-
-		for sigmas in np.arange(20,1,-1):
+		print "Expanding clous..."
+		for sigmas in np.arange(startSigma,endSigma-1,-1):
 
 			#produceMask withDBSCAN
 			if sigmas>2:
-				COMask = self.computeDBSCAN( rawCO,rawHead, min_sigma=sigmas, min_pix=9, connectivity=2 ,region="" , getMask=True )
-				print "?????????"
+				COMask = self.computeDBSCAN( rawCO,rawHead, min_sigma=sigmas, min_pix=8, connectivity=2 ,region="" , getMask=True )
+
 			else:
 				COMask = self.computeDBSCAN(  rawCO,rawHead, min_sigma=sigmas, min_pix=16, connectivity=2 ,region="" , getMask=True )
-				print "???===????"
-
-			print np.sum(COMask)
 
 			for i in range(2000):
 				rawAssign=cloudData.copy()
 				cloudData=cloudData+1 #to keep reagion that has no cloud as 0
 
 				d1Try=dilation(cloudData  ) #expand with connectivity 1, connectivity 2, expandong two fast
-
-
 
 				assignRegion= np.where(np.logical_and(cloudData==0 , COMask ) )
 
@@ -277,7 +267,7 @@ class myDBSCAN(object):
 					break
 
 
-		fits.writeto("expandTest.fits",cloudData ,header=cloudHead,overwrite=True)
+		fits.writeto( saveName+"_extend.fits",cloudData ,header=cloudHead,overwrite=True)
 
 
 
@@ -339,6 +329,9 @@ class myDBSCAN(object):
 
 		###
 		dataCO, headCO = myFITS.readFITS( CO12FITS )
+
+		dataCO=np.nan_to_num(dataCO)
+
 
 		dataCluster , headCluster=myFITS.readFITS( labelFITS )
 
@@ -630,20 +623,21 @@ class myDBSCAN(object):
 
 	def drawDBSCANNumber(self):
 
-		TB2_16= "G2650CO12DBCatS2P16Con2.fit"
-		#TB2_16= "DBSCAN2_9Sigma1_P1FastDBSCAN.fit"
-		TB25_9="G2650CO12DBCatS2.5P9Con2.fit"
-		TB35_9="G2650CO12DBCatS3.5P9Con2.fit"
-		TB45_9="G2650CO12DBCatS4.5P9Con2.fit"
-		TB55_9="G2650CO12DBCatS5.5P9Con2.fit"
-		TB65_9="G2650CO12DBCatS6.5P9Con2.fit"
-		TB75_9="G2650CO12DBCatS7.5P9Con2.fit"
+		minPix=8
 
-		TB3_9= "G2650CO12DBCatS3.0P9Con2.fit"
-		TB4_9= "G2650CO12DBCatS4.0P9Con2.fit"
-		TB5_9= "G2650CO12DBCatS5.0P9Con2.fit"
-		TB6_9= "G2650CO12DBCatS6.0P9Con2.fit"
-		TB7_9= "G2650CO12DBCatS7.0P9Con2.fit"
+		TB2_16="G2650CO12DBCatS2.0P{}Con2.fit".format(minPix)
+		TB25_9="G2650CO12DBCatS2.5P{}Con2.fit".format(minPix)
+		TB35_9="G2650CO12DBCatS3.5P{}Con2.fit".format(minPix)
+		TB45_9="G2650CO12DBCatS4.5P{}Con2.fit".format(minPix)
+		TB55_9="G2650CO12DBCatS5.5P{}Con2.fit".format(minPix)
+		TB65_9="G2650CO12DBCatS6.5P{}Con2.fit".format(minPix)
+		TB75_9="G2650CO12DBCatS7.5P{}Con2.fit".format(minPix)
+
+		TB3_9= "G2650CO12DBCatS3.0P{}Con2.fit".format(minPix)
+		TB4_9= "G2650CO12DBCatS4.0P{}Con2.fit".format(minPix)
+		TB5_9= "G2650CO12DBCatS5.0P{}Con2.fit".format(minPix)
+		TB6_9= "G2650CO12DBCatS6.0P{}Con2.fit".format(minPix)
+		TB7_9= "G2650CO12DBCatS7.0P{}Con2.fit".format(minPix)
 
 
 		TBFiles=[TB2_16,TB25_9,TB3_9, TB35_9, TB4_9, TB45_9,TB5_9, TB55_9, TB6_9 , TB65_9, TB7_9, TB75_9   ]
@@ -682,7 +676,7 @@ class myDBSCAN(object):
 
 
 
-	def drawAreaDistribute(self,TBName,region=""):
+	def drawAreaDistribute(self,TBName,region="",algorithm='Dendrogram'):
 		"""
 
 		:return:
@@ -1064,7 +1058,9 @@ class myDBSCAN(object):
 
 
 
+
 	def removeWrongEdges(self,TB):
+
 
 
 		processTB=TB.copy()
@@ -1076,34 +1072,211 @@ class myDBSCAN(object):
 
 		#part2= processTB[ np.logical_and( processTB["x_cen"]<= 55 ,processTB["y_cen"]>= 1063  )   ] #1003, 3.25
 
+		if "peak" in TB.colnames: #for db scan table
 
-		part1= processTB[ np.logical_or( processTB["x_cen"]< 2815 ,processTB["y_cen"] <1003  )   ] #1003, 3.25
+			part1= processTB[ np.logical_or( processTB["x_cen"]>26.25 ,processTB["y_cen"] < 3.25  )   ] #1003, 3.25
 
-		part2= part1[ np.logical_or( part1["x_cen"]>  55 ,part1["y_cen"]< 1063  )   ] #1003, 3.25
+			part2= part1[ np.logical_or( part1["x_cen"]<49.25 ,part1["y_cen"]<  3.75 )   ] #1003, 3.25
 
-		return part2
+			return part2
+		else: #dendrogram tb
+
+			part1= processTB[ np.logical_or( processTB["x_cen"]< 2815 ,processTB["y_cen"] < 1003  )   ] #1003, 3.25
+
+			part2= part1[ np.logical_or( part1["x_cen"]>  55 ,part1["y_cen"]< 1063  )   ] #1003, 3.25
+
+			return part2
+
+	def removeAllEdges(self,TBList):
+		"""
+
+		:param TBList:
+		:return:
+		"""
+		newList=[]
+
+		for eachTB in TBList:
+			newList.append( self.removeWrongEdges(eachTB) )
+
+			
+		return newList
+
+	def getNList(self,TBList):
+
+		Nlist=[]
+
+		for eachTB in TBList:
+			Nlist.append( len(eachTB) )
+		return Nlist
 
 
-		#reject them all
-
- 		newTB=  vstack([processTB,part1,part2])
-
-		ids,counts=np.unique(newTB["_idx"],return_counts=True)
-
-		goodIDs=ids[counts<2 ]
+	def areaAndNumberDistribution(self, algorithm="Dendrogram" ):
+		"""
+		#draw the area the
+		:return:
+		"""
 
 
-		empty=Table( processTB[0])
-		empty.remove_row(0)
+		#first, get TBList
+
+		tb8,tb16,label8,label16,sigmaList=self.getTBList(algorithm=algorithm)
+
+		tb8=self.removeAllEdges(tb8)
+		tb16=self.removeAllEdges(tb16)
+
+
+		fig=plt.figure(figsize=(12,6))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		axNumber=fig.add_subplot(1,2,1)
+
+		Nlist8=self.getNList(tb8)
+		Nlist16=self.getNList(tb16)
+
+
+		axNumber.plot(sigmaList,Nlist8,'o-',label="MinPix = 8",color="blue",lw=0.5)
+		axNumber.plot(sigmaList,Nlist16,'o-',label="MinPix = 16",color="green", lw=0.5)
 
 
 
-		for eachR in processTB:
-			if eachR["_idx"] in goodIDs:
-				empty.add_row(eachR)
 
 
-		return  empty
+		#axArea.set_xlabel(r"Area (deg$^2$)")
+		axNumber.set_ylabel(r"Total number of trunks")
+		axNumber.set_xlabel(r"CO cutoff ($\sigma$)")
+
+		axNumber.legend()
+
+		at = AnchoredText(algorithm, loc=3, frameon=False)
+		#at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+		axNumber.add_artist(at)
+
+
+		################ Area ##############
+
+
+		axArea= fig.add_subplot(1,2,2)
+
+		areaEdges=np.linspace(0,150,6000)
+		areaCenter=self.getEdgeCenter( areaEdges )
+
+
+		totalTB=tb8+tb16
+		labelStr=label8+label16
+
+		for i in range( len(totalTB) ):
+
+			eachTB = totalTB[i]
+
+			binN,binEdges=np.histogram(eachTB["area_exact"]/3600., bins=areaEdges  )
+
+
+			axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,label=labelStr[i] ,alpha= 0.5 )
+
+
+		#set ticikes of Area
+
+
+		axArea.set_yscale('log')
+		axArea.set_xscale('log')
+
+		axArea.set_xlim( [ 0.01,150 ] )
+
+
+		if algorithm=="DBSCAN":
+			axArea.set_ylim( [ 0.8,50000 ] )
+
+		else:
+			axArea.set_ylim( [ 0.8,10000 ] )
+
+		axArea.legend(ncol=2)
+
+
+
+		axArea.set_xlabel(r"Area (deg$^2$)")
+		axArea.set_ylabel(r"Bin number of trunks ")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		plt.savefig( "comparePara_{}.pdf".format(algorithm) ,  bbox_inches='tight')
+
+		plt.savefig( "comparePara_{}.png".format(algorithm) ,  bbox_inches='tight',dpi=300)
+
+
+
+	def getTBList(self, algorithm="DBSCAN"):
+		"""
+		return a list of table,
+		:param minP:
+		:param algorithm:
+		:return:
+		"""
+
+		if algorithm=="DBSCAN":
+			#ignore minP, only has 8
+
+
+			TBList=[]
+			TBList16=[]
+
+			TBLabelsP8=[]
+			TBLabelsP16=[]
+			minPix=8
+
+
+			DbscanSigmaList= np.arange(2,6.5,0.5)
+
+			for sigmas in DbscanSigmaList:
+				tbName= "G2650CO12DBCatS{:.1f}P{}Con2.fit".format(sigmas, minPix)
+				ttt8=Table.read(tbName)
+				TBList.append(ttt8  )
+				ttt16=ttt8[ttt8["pixN"]>=16]
+				TBList16.append(ttt16  )
+				TBLabelsP8.append(  r"{:.1f}$\sigma$, P8".format( sigmas)   )
+				TBLabelsP16.append( r"{:.1f}$\sigma$, P16".format( sigmas)   )
+
+			return TBList,TBList16,TBLabelsP8,TBLabelsP16,DbscanSigmaList
+
+
+		else:
+
+			TBListP8=[]
+			TBListP16=[]
+
+			TBLabelsP8=[]
+			TBLabelsP16=[]
+
+			dendroSigmaList=[2,2.5 , 3,4,5,6]
+
+
+			for sigmas in dendroSigmaList:
+				tbName8= "minV{}minP{}_dendroCatTrunk.fit".format(sigmas, 8)
+				tbName16= "minV{}minP{}_dendroCatTrunk.fit".format(sigmas, 16)
+
+				TBListP8.append(Table.read(tbName8)  )
+				TBListP16.append(Table.read(tbName16)  )
+
+
+				TBLabelsP8.append(  r"{:.1f}$\sigma$, P8".format( sigmas)   )
+				TBLabelsP16.append( r"{:.1f}$\sigma$, P16".format( sigmas)   )
+
+
+
+			return TBListP8,TBListP16,TBLabelsP8,TBLabelsP16,dendroSigmaList
+
 
 
 
@@ -1125,8 +1298,37 @@ G210CO12="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO12sm.fits"
 G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
 
 
+if 1:
+	doDBSCAN.areaAndNumberDistribution(algorithm="Dendrogram")
+	doDBSCAN.areaAndNumberDistribution(algorithm="DBSCAN")
 
 
+if 0: # get catalog from extended fits
+
+
+	doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650DisCloudVe20_extend.fits",doDBSCAN.TBModel,saveMarker="G2650CloudForDisCat")
+	sys.exit()
+
+
+
+if 0:
+
+
+	doDBSCAN.drawDBSCANNumber()
+	doDBSCAN.drawDBSCANArea()
+
+
+if  0: #dilation
+
+	#scimesFITS= "/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits"
+	#rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
+
+	scimesFITS= "/home/qzyan/WORK/myDownloads/MWISPcloud/distanceDendro/ClusterAsgn_Ve20.fits"
+	rawFITS= G2650CO12FITS  #"/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
+
+	doDBSCAN.myDilation( scimesFITS , rawFITS, saveName="G2650DisCloudVe20",startSigma=10)
+
+	sys.exit()
 
 if 0:
 	#doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS2P16Con2.fits",doDBSCAN.TBModel, saveMarker="G2650CO12DBCatS2P16Con2" )
@@ -1134,7 +1336,7 @@ if 0:
 		savename="G2650CO12DBCatS{}P{}Con2".format(i,8)
 		doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS{}P8Con2.fits".format(i),doDBSCAN.TBModel,saveMarker=savename)
 
-	sys.exit()
+
 
 
 
@@ -1163,22 +1365,7 @@ if 0: #
 
 	sys.exit()
 
-if 0:
 
-	rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
-
-
-
-	doDBSCAN.myDilation()
-	#testCOFITS=""
-
-	pass
-
-if 0:
-
-
-	doDBSCAN.drawDBSCANNumber()
-	doDBSCAN.drawDBSCANArea()
 
 
 
@@ -1201,12 +1388,6 @@ if 0:# DBSCAN for G210
 
 	sys.exit()
 
-if 1: #Draw G210
-	#draw perseus
-	doDBSCAN.drawAreaDistribute("G2650CO12DBCatS7.5P9Con2.fit"  )
-
-	#doDBSCAN.drawAreaDistribute("G210CO13DBSCAN4_9.fit" ,region="G210CO13" )
-	sys.exit()
 
 
 
