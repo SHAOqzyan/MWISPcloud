@@ -365,7 +365,7 @@ class MWcloud:
 
 doCloud=MWcloud()
 
-if 0:
+if 1:
 
 	COFITS="G2650Local30.fits"
 	dendroFITS="minV3minP16_dendro.fits"
