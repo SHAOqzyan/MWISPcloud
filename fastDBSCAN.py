@@ -543,6 +543,43 @@ class myDBSCAN(object):
 
 		return  areaCenters
 
+	def cleanDBTB(self,dbTB,pixN=8,minV=3,minDelta=3):
+
+		"""
+		The minimum Peak, should be relative to the minValue
+		:param dbTB:
+		:param pixN:
+		:param peak:
+		:return:
+		"""
+		peakV=(minV + minDelta)*self.rms
+
+		if type(dbTB)==list:
+			newList=[]
+			for eachT in dbTB:
+
+				goodT=eachT.copy()
+				goodT=goodT[ goodT["pixN"] >= pixN ]
+				goodT=goodT[ goodT["peak"] >= peakV ]
+
+				newList.append(goodT)
+
+			return newList
+
+
+
+		else:
+
+			goodT=dbTB.copy()
+			goodT=goodT[ goodT["pixN"] >= pixN ]
+			goodT=goodT[ goodT["peak"] >= peakV ]
+
+			return goodT
+
+
+
+
+
 	def drawDBSCANArea(self):
 
 		TB2_16= "G2650CO12DBCatS2P16Con2.fit"
@@ -1241,16 +1278,25 @@ class myDBSCAN(object):
 			minPix=8
 
 
+
 			DbscanSigmaList= np.arange(2,6.5,0.5)
 
 			for sigmas in DbscanSigmaList:
 				tbName= "G2650CO12DBCatS{:.1f}P{}Con2.fit".format(sigmas, minPix)
 				ttt8=Table.read(tbName)
+				ttt8=self.cleanDBTB(ttt8,pixN=8,minV=sigmas,minDelta=3)
+				
 				TBList.append(ttt8  )
 				ttt16=ttt8[ttt8["pixN"]>=16]
+				ttt16=self.cleanDBTB(ttt16,pixN=16,minV=sigmas,minDelta=3)
+
+
 				TBList16.append(ttt16  )
 				TBLabelsP8.append(  r"{:.1f}$\sigma$, P8".format( sigmas)   )
 				TBLabelsP16.append( r"{:.1f}$\sigma$, P16".format( sigmas)   )
+
+			
+
 
 			return TBList,TBList16,TBLabelsP8,TBLabelsP16,DbscanSigmaList
 
@@ -1290,6 +1336,7 @@ class myDBSCAN(object):
 		:return:
 		"""
 		#reject cloud that peak values area less than peakSigma, and total peak number are less then minP
+
 
 
 		dataCluster, head= myFITS.readFITS(cloudLabelFITS)
@@ -1368,6 +1415,7 @@ class myDBSCAN(object):
 		dbFITS="fastDendroTestdbscanS{}P3Con1.fits".format(minV)
 
 
+
 		self.setMinVandPeak(dbFITS,COFITS, peakSigma=minDelta+minV,minP=minP)
 
 	def ZZ(self):
@@ -1385,6 +1433,18 @@ localCO13="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Local30CO13.fits"
 
 G210CO12="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO12sm.fits"
 G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
+
+
+
+
+
+
+
+if 1:
+
+	doDBSCAN.drawAreaDistribute("ClusterCat_3_16Ve20.fit" , region="scimes" )
+
+	sys.exit()
 
 
 
@@ -1409,7 +1469,7 @@ if 0: #test Fast Dendrogram
 
 
 
-if 1:
+if 0:
 	doDBSCAN.areaAndNumberDistribution(algorithm="Dendrogram")
 	doDBSCAN.areaAndNumberDistribution(algorithm="DBSCAN")
 
@@ -1519,9 +1579,10 @@ if 0:
 	#draw perseus
 	#doDBSCAN.drawAreaDistribute("DBSCAN3_9.fit"  )
 
-	doDBSCAN.drawAreaDistribute("minV3minP16_dendroCatTrunk.fit" , region="Perseus" )
+	doDBSCAN.drawAreaDistribute("ClusterCat_3_16Ve20.fit" , region="scimes" )
 
 
+	#doDBSCAN.drawAreaDistribute("minV3minP16_dendroCatTrunk.fit" , region="Perseus" )
 
 	#doDBSCAN.drawSumDistribute("DBSCAN3_9Sigma1_P1FastDBSCAN.fit"  )
 
