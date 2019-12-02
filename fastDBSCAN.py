@@ -1124,6 +1124,9 @@ class myDBSCAN(object):
 		tb8=self.removeAllEdges(tb8)
 		tb16=self.removeAllEdges(tb16)
 
+		#need to constrain the minP and PeakN, PeakSigma=lower sigma cut + 3 sigma, as the minDelta,
+
+
 
 		fig=plt.figure(figsize=(12,6))
 		rc('text', usetex=True )
@@ -1158,7 +1161,7 @@ class myDBSCAN(object):
 
 		axArea= fig.add_subplot(1,2,2)
 
-		areaEdges=np.linspace(0,150,6000)
+		areaEdges=np.linspace(0,150,10000)
 		areaCenter=self.getEdgeCenter( areaEdges )
 
 
@@ -1175,13 +1178,14 @@ class myDBSCAN(object):
 			axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,label=labelStr[i] ,alpha= 0.5 )
 
 
+
 		#set ticikes of Area
 
 
 		axArea.set_yscale('log')
 		axArea.set_xscale('log')
 
-		axArea.set_xlim( [ 0.01,150 ] )
+		axArea.set_xlim( [ 0.005,150 ] )
 
 
 		if algorithm=="DBSCAN":
@@ -1259,7 +1263,7 @@ class myDBSCAN(object):
 			TBLabelsP8=[]
 			TBLabelsP16=[]
 
-			dendroSigmaList=[2,2.5 , 3,4,5,6]
+			dendroSigmaList=[2,2.5 , 3, 3.5, 4,4.5,5, 5.5, 6]
 
 
 			for sigmas in dendroSigmaList:
@@ -1279,7 +1283,92 @@ class myDBSCAN(object):
 
 
 
+	def setMinVandPeak(self,cloudLabelFITS,COFITS, peakSigma=3,minP=8):
+		"""
+		:param cloudLabelFITS:
+		:param peakSigma:
+		:return:
+		"""
+		#reject cloud that peak values area less than peakSigma, and total peak number are less then minP
 
+
+		dataCluster, head= myFITS.readFITS(cloudLabelFITS)
+
+		dataCO,headCO= myFITS.readFITS(COFITS)
+
+		clusterIndex1D= np.where( dataCluster>0)
+		clusterValue1D=  dataCluster[clusterIndex1D ]
+
+		Z0,Y0,X0 = clusterIndex1D
+
+		allClouds,counts=np.unique( clusterValue1D , return_counts=True)
+
+
+		widgets = ['Fast Dendro WithDBSCAN: ', Percentage(), ' ', Bar(marker='0',left='[',right=']'),  ' ', ETA(), ' ', FileTransferSpeed()] #see docs for other options
+
+		pbar = ProgressBar(widgets=widgets, maxval=len(allClouds))
+		pbar.start()
+
+
+		for i in range( len(allClouds) ):
+
+
+			pbar.update(i)
+
+			cloudID =  allClouds[i]
+
+			pixN=counts[i]
+			cloudIndex=self.getIndices(Z0,Y0,X0,clusterValue1D,cloudID)
+
+			if pixN<minP:#reject clouds
+
+				dataCluster[cloudIndex]=0
+
+				continue
+
+
+
+
+			coValues=  dataCO[ cloudIndex ]
+
+			if np.nanmax(coValues) <  peakSigma*self.rms: #reject
+				cloudIndex=self.getIndices(Z0,Y0,X0,clusterValue1D,cloudID)
+				dataCluster[cloudIndex]=0
+
+				continue
+		#relabelclouds
+		pbar.finish()
+		#dataCluster[dataCluster>0]=1
+		s=generate_binary_structure(3,1)
+
+		newDataCluster= dataCluster>0
+
+
+
+		labeled_redo, num_features=label(newDataCluster, structure=s) #first label core, then expand, otherwise, the expanding would wrongly connected
+
+		print "Total number of clouds? ",  num_features
+
+		tbDendro=Table.read( "minV5minP8_dendroCatTrunk.fit" )
+		print "The dendrogramN is ",len(tbDendro)
+
+		#save the fits
+
+		fits.writeto("relabelFastDendrominPeak{}_P{}.fits".format( peakSigma, minP ), labeled_redo, header=headCO,overwrite=True)
+
+
+	def fastDendro(self,COFITS,minDelta=3,minV=3,minP=8):
+
+		COData,COHead=myFITS.readFITS( COFITS)
+
+		print np.max(COData)
+		#first create dendrogram
+		self.computeDBSCAN(COData,COHead, min_sigma=minV,min_pix=3,connectivity=1,region="fastDendroTest")
+
+		dbFITS="fastDendroTestdbscanS{}P3Con1.fits".format(minV)
+
+
+		self.setMinVandPeak(dbFITS,COFITS, peakSigma=minDelta+minV,minP=minP)
 
 	def ZZ(self):
 		pass
@@ -1296,6 +1385,28 @@ localCO13="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Local30CO13.fits"
 
 G210CO12="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO12sm.fits"
 G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
+
+
+
+if 0: #test Fast Dendrogram
+
+
+	doDBSCAN.fastDendro("testDendro.fits",minV=5,minP=8)
+
+
+	sys.exit()
+
+if 0: #test Fast Dendrogram
+	COData,COHead=myFITS.readFITS( G2650CO12FITS)
+
+
+	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=5,min_pix=3,connectivity=1,region="G2650CO12DBDendro")
+
+	#should peak sigma be larger?
+	doDBSCAN.setMinVandPeak( "G2650CO12DBDendrodbscanS5P3Con1.fits" ,G2650CO12FITS,minP=8,peakSigma=8 )
+
+	sys.exit()
+
 
 
 if 1:
@@ -1340,14 +1451,6 @@ if 0:
 
 
 
-if 0:
-	COData,COHead=myFITS.readFITS( G2650CO12FITS)
-	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=2,min_pix=16,connectivity=2,region="G2650CO12")
-
-	for i in np.arange(2 ,8,0.5):
-		doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=i,min_pix=8,connectivity=2,region="G2650CO12")
-
-	sys.exit()
 
 
 

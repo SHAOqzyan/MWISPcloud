@@ -69,7 +69,7 @@ class MWcloud:
 		:param minDelta:
 		:return:
 		"""
-		saveMark="minV{}minP{}".format(minV,minPix)
+		saveMark=saveName+"minV{}minP{}".format(minV,minPix)
 
 		treeFile= saveMark+"_Tree.txt"
 
@@ -138,10 +138,14 @@ class MWcloud:
 		data0=np.zeros_like(data)
 
 
+		print d[1]
+
 
 		for eachT in  d.trunk:
 
-			tID =   eachT.idx
+
+
+			tID =   eachT.idx+1
 			#print eachT.parent
 
 			tMask=eachT.get_mask().astype("short")
@@ -359,23 +363,27 @@ class MWcloud:
 		fits.writeto("ExpandTest.fits",cloudData ,header=cloudHead,overwrite=True)
 
 
-
 	def ZZZ(self):
 		pass
 
 doCloud=MWcloud()
 
+
+if 0:
+	doCloud.doDendro("testDendro.fits",minV=5, minPix= 8,doSCIMES=False  ,saveName="testDendro")
+
+
 if 1:
 
 	COFITS="G2650Local30.fits"
-	dendroFITS="minV3minP16_dendro.fits"
-	dendroCat= "minV3minP16_dendroCat.fit"
+	dendroFITS="minV3minP1000_dendro.fits"
+	dendroCat= "minV3minP1000_dendroCat.fit"
 
 	Table.read(dendroCat)
 
 	d=Dendrogram.load_from( dendroFITS )
 
-	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,    "3_16Ve20", inputD=d ,criteriaUsed=[doCloud.myVrms],scales=[20] )
+	doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,    "3_1000Ve20", inputD=d ,criteriaUsed=[doCloud.myVrms],scales=[20] )
 
 
 	#doCloud.doDendro("G2650Local30.fits",minV=3,minPix= 1000,doSCIMES=True  )
