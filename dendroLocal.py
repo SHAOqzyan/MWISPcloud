@@ -385,7 +385,7 @@ if 1:
 
 	#doCloud.doDendro("G2650Local30.fits",minV=3,minPix= 1000,doSCIMES=True  )
 
-if 0:
+if 0: 
 	doCloud.doDendro("testDendro.fits",minV=5, minPix= 8,doSCIMES=False  ,  minDelta=2.99,   saveName="testDendro")
 
 
