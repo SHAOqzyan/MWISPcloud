@@ -729,7 +729,7 @@ class myDBSCAN(object):
 
 
 
-		fig=plt.figure(figsize=(12,6))
+		fig=plt.figure(figsize=(8,6))
 		rc('text', usetex=True )
 		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
 		axArea=fig.add_subplot(1,1,1)
@@ -742,23 +742,10 @@ class myDBSCAN(object):
 			goodT=goodT[ goodT["pixN"]>=16 ]
 			goodT=goodT[ goodT["peak"]>=1.5 ]
 		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
-		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5, label=region  )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5, label=r"SCIMES,min3$\sigma$P16 12CO"  )
 
 
 		self.getAlphaWithMCMC( goodT["area_exact"] )
-
-		###############
-
- 		goodT=TBAll
-
-		if "pixN" in goodT.colnames:
-
-			goodT=goodT[ goodT["pixN"]>=16 ]
-			goodT=goodT[ goodT["peak"]>=1.5 ]
-		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges )
-		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5, label="All"  )
-
-
 
 		###############
  		goodT=TBLOcal
@@ -768,8 +755,40 @@ class myDBSCAN(object):
 			goodT=goodT[ goodT["pixN"]>=16 ]
 			goodT=goodT[ goodT["peak"]>=1.5 ]
 		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
-		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="Velocity range (0-30 km/s)"  )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="Velocity range (0-30 km/s)12CO"  )
 
+
+
+		############### Perseus
+ 		goodT=  Table.read("Local13DBSCAN3_9.fit")
+
+		if "pixN" in goodT.colnames:
+
+			goodT=goodT[ goodT["pixN"]>=16 ]
+			goodT=goodT[ goodT["peak"]>=1.5 ]
+		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label=r"(26$^\circ$-50$^\circ$)13CO"  )
+
+
+		############### Perseus
+ 		goodT=  Table.read("G210DBSCAN3_9.fit")
+
+		if "pixN" in goodT.colnames:
+
+			goodT=goodT[ goodT["pixN"]>=16 ]
+			goodT=goodT[ goodT["peak"]>=1.5 ]
+		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label=r"G210(210$^\circ$-220$^\circ$)12CO"  )
+
+		###############
+ 		goodT=  Table.read("DBSCAN3_9.fit")
+
+		if "pixN" in goodT.colnames:
+
+			goodT=goodT[ goodT["pixN"]>=16 ]
+			goodT=goodT[ goodT["peak"]>=1.5 ]
+		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="Velocity range (30-60 km/s)12CO"  )
 
 
 
@@ -792,6 +811,7 @@ class myDBSCAN(object):
 		axArea.set_title("Plot of Area distribution with DBSCAN")
 
 		plt.savefig( region+"dbscanArea.png" ,  bbox_inches='tight',dpi=300)
+		plt.savefig( region+"dbscanArea.pdf" ,  bbox_inches='tight' )
 
 
 	def getAlphaWithMCMC(self,areaArray,minArea=0.03,maxArea=1. ):
@@ -1231,7 +1251,7 @@ class myDBSCAN(object):
 		else:
 			axArea.set_ylim( [ 0.8,10000 ] )
 
-		axArea.legend(ncol=2)
+
 
 
 
@@ -1239,13 +1259,21 @@ class myDBSCAN(object):
 		axArea.set_ylabel(r"Bin number of trunks ")
 
 
+		axArea.legend(ncol=2)
 
 
+		#draw scimes
+
+		scimesTB=Table.read("ClusterCat_3_16Ve20.fit")
+
+		binN,binEdges=np.histogram(scimesTB["area_exact"]/3600., bins=areaEdges  )
 
 
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  ,  color='red',  markersize=1, lw=0.8,label=r"Scimes,3.0$\sigma$, P16" ,alpha= 0.5 )
 
-
-
+		at = AnchoredText("Red: SCIMES,3.0$\sigma$, P16", loc=4, frameon=False)
+		#at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+		axArea.add_artist(at)
 
 
 
@@ -1418,6 +1446,141 @@ class myDBSCAN(object):
 
 		self.setMinVandPeak(dbFITS,COFITS, peakSigma=minDelta+minV,minP=minP)
 
+
+	def drawCloudMap(self,drawChannel=98):
+		"""
+		#draw small clouds to check if the are real...
+
+		one color for DBSCAN
+		one color for dendrogram,
+
+		draw 2sigma, because they would provide the smallest area of clouds,
+
+		:return:
+		"""
+
+		COFITS="G2650Local30.fits"
+
+		data,head=myFITS.readFITS(COFITS)
+
+		WCSCO=WCS(head)
+
+		channelRawCO=data[drawChannel]
+
+
+		drawDBSCANtb=Table.read("G2650CO12DBCatS2.0P8Con2.fit")
+
+		drawDBSCANtb=self.cleanDBTB(drawDBSCANtb,minDelta=3,minV=2,pixN=16)
+
+
+		drawDBSCANtb=self.removeWrongEdges(drawDBSCANtb)
+
+
+		drawDBSCANData,drawDBSCANHead = myFITS.readFITS("G2650CO12dbscanS2.0P8Con2.fits")
+
+		channelDBSCAN = drawDBSCANData[drawChannel]
+
+		dbClouds=np.unique(channelDBSCAN)
+
+
+
+		drawDENDROtb=Table.read("minV2minP16_dendroCatTrunk.fit")
+
+		drawDENDROtb=self.removeWrongEdges(drawDENDROtb)
+
+
+		drawDENDROData,drawDENDROHead = myFITS.readFITS("minV2minP16_TrunkAsign.fits")
+
+		channelDENDRO = drawDENDROData[drawChannel]
+
+		dendroClouds=np.unique(channelDENDRO)
+
+
+		maximumArea=16*0.25 #arcmin^2
+
+		#
+		#print drawDBSCANtb.colnames
+
+
+
+		fig = plt.figure(1, figsize=(8,4.5) )
+		rc('font', **{'family': 'sans-serif', 'serif': ['Helvetica']})
+		#rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+
+		rc('text', usetex=True)
+
+		axCO= pywcsgrid2.subplot(111, header=   WCSCO  )
+		axCO.imshow(channelRawCO,origin='lower',cmap="bone",vmin=0 ,vmax=3,interpolation='none')
+
+
+		#draw Dendrogram.............
+
+		for eachDRC in dendroClouds:
+			eachDRC=int(eachDRC)
+			if eachDRC==0:
+				continue
+
+			cRow=  drawDENDROtb[drawDENDROtb["_idx"]==eachDRC  ]
+
+			area=cRow["area_exact"]
+
+			if area>maximumArea:
+				continue
+
+			else:
+				#draw
+
+
+				if np.isnan(cRow["x_cen"] ):
+					continue
+				#print eachDRC
+				axCO.scatter(cRow["x_cen"], cRow["y_cen"]  , s=13,facecolors='none',edgecolors='r',linewidths=0.3 )
+
+
+
+
+		#draw DBSCAN.............
+
+		for eachDBC in dbClouds:
+
+			if eachDBC==0:
+				continue
+
+			cRow=  drawDBSCANtb[drawDBSCANtb["_idx"]==eachDBC  ]
+
+			if len(cRow)==0: #may be edge sources
+				continue
+
+			area=cRow["area_exact"]
+
+			if area>maximumArea:
+				continue
+
+			else:
+				#draw
+
+
+				if np.isnan(cRow["x_cen"] ):
+					continue
+
+
+				axCO["gal"].scatter(cRow["x_cen"], cRow["y_cen"]  , s=10,facecolors='none',edgecolors='b',linewidths=0.3 )
+
+
+
+		axCO.set_ticklabel_type("absdeg", "absdeg")
+		axCO.axis[:].major_ticks.set_color("w")
+
+		fig.tight_layout()
+		plt.savefig("checkCloud.pdf", bbox_inches="tight")
+
+		plt.savefig("checkCloud.png", bbox_inches="tight",dpi=600)
+
+
+
+
+
+
 	def ZZ(self):
 		pass
 
@@ -1438,9 +1601,8 @@ G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
 
 
 
-
-
 if 1:
+	#doDBSCAN.drawCloudMap()
 
 	doDBSCAN.drawAreaDistribute("ClusterCat_3_16Ve20.fit" , region="scimes" )
 
