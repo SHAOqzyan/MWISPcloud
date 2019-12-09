@@ -371,7 +371,7 @@ doCloud=MWcloud()
 
 
 if 1:
-	for sigmas in [2,2.5, 3 , 3.5, 4, 4.5, 5, 5.5, 6]:
+	for sigmas in [ 3.5, 4, 4.5, 5, 5.5, 6]:
 		for pixN in [8,16]:
 
 			if sigmas==3 and pixN==16:
@@ -381,6 +381,8 @@ if 1:
 			if sigmas==5 and pixN==16:
 				continue
 
+			if sigmas==3.5 and pixN==8:
+				continue
 
 
 			COFITS="G2650Local30.fits"

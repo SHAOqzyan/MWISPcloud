@@ -338,7 +338,9 @@ class myDBSCAN(object):
 
 		wcsCloud=WCS( headCluster )
 
-		clusterIndex1D= np.where( dataCluster>0)
+		minValue=np.min(dataCluster )
+
+		clusterIndex1D= np.where( dataCluster>minValue )
 		clusterValue1D=  dataCluster[clusterIndex1D ]
 
 		Z0,Y0,X0 = clusterIndex1D
@@ -380,19 +382,21 @@ class myDBSCAN(object):
 		pbar.start()
 
 
+
 		catTB=newTB.copy()
 
 		catTB.remove_row(0)
 
 		runIndex=0
 
+
+
 		for i in  range(len(GoodIDs)) :
 
 			#i would be the newID
 			newID= GoodIDs[i]
 
-			if newID==0:
-				continue
+
 
 			pixN=GoodCount[i]
 
@@ -711,6 +715,32 @@ class myDBSCAN(object):
 
 		plt.savefig( "dbscanNumber.png" ,  bbox_inches='tight',dpi=300)
 
+	def getRealArea(self,TB):
+		print TB.colnames
+		araeList=[]
+
+		#print TB.colnames
+		for eachR in TB:
+			v = eachR["v_cen"]
+			dis= (v- 4.24787753)/13.46359868*1000 # pc
+
+			if dis<0  or dis> 1500 :
+				continue
+
+			N=eachR["area_exact"]/0.25
+
+
+			#print N,eachR["pixN"]
+			length= dis*np.deg2rad(0.5/60) # 0.0001454441043328608
+			trueArea=length**2*N #eachR["pixN"]  #*10000
+			#print N,  trueArea
+
+			araeList.append(  trueArea )
+
+
+
+		return np.asarray(araeList)
+
 
 
 	def drawAreaDistribute(self,TBName,region="",algorithm='Dendrogram'):
@@ -740,12 +770,19 @@ class myDBSCAN(object):
 		if "pixN" in goodT.colnames:
 
 			goodT=goodT[ goodT["pixN"]>=16 ]
-			goodT=goodT[ goodT["peak"]>=1.5 ]
+			goodT=goodT[ goodT["peak"]>= self.rms*5. ]
 		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
-		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5, label=r"SCIMES,min3$\sigma$P16 12CO"  )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5, label= region)#   r"SCIMES,min3$\sigma$P16 12CO"  )
+		print region
+		self.getAlphaWithMCMC(  goodT["area_exact"] , minArea= 0.00065, maxArea=None , physicalArea=False )
 
+		#a=np.linspace(1,3000,6000)
 
-		self.getAlphaWithMCMC( goodT["area_exact"] )
+		#trueArea=1./a**2
+		#self.getAlphaWithMCMC(  trueArea , minArea= 1e-7, maxArea=None , physicalArea=True )
+
+		#print "Above???-2??"
+
 
 		###############
  		goodT=TBLOcal
@@ -755,8 +792,23 @@ class myDBSCAN(object):
 			goodT=goodT[ goodT["pixN"]>=16 ]
 			goodT=goodT[ goodT["peak"]>=1.5 ]
 		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
-		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="Velocity range (0-30 km/s)12CO"  )
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="Velocity range (0-30 km/s)12CO Raw"  )
 
+
+		areaEdges=np.linspace(0,100,1000)
+		areaCenter=self.getEdgeCenter( areaEdges )
+
+
+
+		realArea=self.getRealArea(goodT)
+		binN,binEdges=np.histogram( realArea  , bins=areaEdges  )
+
+		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5 ,label="Velocity range (0-30 km/s)12CO, distance Corrected"  )
+		print min(realArea),"The minimum area?"
+		self.getAlphaWithMCMC(  realArea  ,minArea= 0.42836824657505895 , maxArea=None,  physicalArea=True)
+
+		areaEdges=np.linspace(0,6,1000)
+		areaCenter=self.getEdgeCenter( areaEdges )
 
 
 		############### Perseus
@@ -814,7 +866,7 @@ class myDBSCAN(object):
 		plt.savefig( region+"dbscanArea.pdf" ,  bbox_inches='tight' )
 
 
-	def getAlphaWithMCMC(self,areaArray,minArea=0.03,maxArea=1. ):
+	def getAlphaWithMCMC(self,areaArray,minArea=0.03,maxArea=1.,physicalArea=False,verbose=True,plotTest=False,saveMark="" ):
 		"""
 		areaArray should be in square armin**2
 		:param areaArray:
@@ -824,13 +876,48 @@ class myDBSCAN(object):
 		"""
 
 		print "Fitting index with MCMC..."
-		areaArray=areaArray/3600.
-		select=np.logical_and( areaArray>minArea, areaArray<maxArea)
+
+		if not physicalArea:
+			areaArray=areaArray/3600.
+
+		if maxArea!=None:
+			select=np.logical_and( areaArray>minArea, areaArray<maxArea)
+
+		else:
+			select= areaArray>minArea
+
 		rawArea =   areaArray[ select ]
 
-		doG210.fitPowerLawWithMCMCcomponent1(rawArea,minV=minArea,maxV=maxArea)
+		if verbose:
+			print "Run first chain for {} molecular clouds.".format( len( rawArea ) )
+		part1=doG210.fitPowerLawWithMCMCcomponent1(rawArea, minV=minArea, maxV=maxArea)
+		if verbose:
+			print "Run second chain for {} molecular clouds.".format( len(rawArea) )
+
+		part2=doG210.fitPowerLawWithMCMCcomponent1(rawArea, minV=minArea, maxV=maxArea)
+
+		allSample=np.concatenate(  [ part1 , part2 ]    )
 
 
+		#test plot
+		if plotTest:
+			fig = plt.figure(figsize=(12, 6))
+			ax0 = fig.add_subplot(1, 1, 1)
+			# fig, axs = plt.subplots(nrows=1, ncols=2,  figsize=(12,6),sharex=True)
+			rc('text', usetex=True)
+			rc('font', **{'family': 'sans-serif', 'size': 13, 'serif': ['Helvetica']})
+
+			ax0.scatter(part1,part2,s=10 )
+
+			plt.savefig("mcmcSampleTest.pdf"  , bbox_inches='tight')
+			aaaaaa
+
+		meanAlpha= np.mean( allSample)
+		stdAlpha=  np.std(allSample,ddof=1)
+		if verbose:
+			print "Alpha Mean: {:.2f}; std: {:.2f}".format( meanAlpha,  stdAlpha)
+
+		return round(meanAlpha,2) , round(stdAlpha,2)
 
 	def drawSumDistribute(self,TBName,region=""):
 		"""
@@ -1167,6 +1254,276 @@ class myDBSCAN(object):
 		return Nlist
 
 
+
+
+
+
+
+	def alphaDistribution(self):
+		"""
+
+		# draw alph distribution, for each DBSCAN,
+
+		:return:
+		"""
+
+		algDendro="Dendrogram"
+		tb8Den,tb16Den,label8Den,label16Den,sigmaListDen=self.getTBList(algorithm=algDendro)
+		tb8Den=self.removeAllEdges(tb8Den)
+		tb16Den=self.removeAllEdges(tb16Den)
+
+
+		algDB="DBSCAN"
+		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
+		tb8DB=self.removeAllEdges(tb8DB)
+		tb16DB=self.removeAllEdges(tb16DB)
+
+
+
+		fig=plt.figure(figsize=(15,6))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		#############   plot dendrogram
+		axDendro=fig.add_subplot(1,3,1)
+		alphaDendro, alphaDendroError = self.drawAlpha( axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
+
+		at = AnchoredText(algDendro, loc=1, frameon=False)
+		axDendro.add_artist(at)
+		axDendro.set_ylabel(r"$\alpha$")
+		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
+		axDendro.legend(loc=3)
+
+
+
+		##############   plot DBSCAN
+		axDB=fig.add_subplot(1,3,2,sharex=axDendro,sharey=axDendro)
+		#self.drawNumber(axDB,tb8DB,tb16DB, label8DB,  label16DB ,sigmaListDB)
+
+		alphaDB,  alphaDBError = self.drawAlpha( axDB,tb8DB,tb16DB, label8DB,  label16DB ,sigmaListDB)
+
+		at = AnchoredText(algDB, loc=1, frameon=False)
+		axDB.add_artist(at)
+
+		#axDB.set_ylabel(r"Total number of clusters")
+
+		axDB.set_xlabel(r"CO cutoff ($\sigma$)")
+
+		axDB.legend(loc=3)
+
+		##########plot SCIMES
+
+		allAlpha = alphaDB+alphaDendro
+		allAlphaError = alphaDBError+alphaDendroError
+
+		print "Average error, ",  np.mean(allAlphaError )
+
+		errorAlpha= np.mean(allAlphaError )**2+  np.std(allAlpha,ddof=1)**2
+		errorAlpha=np.sqrt( errorAlpha )
+
+		print "The mean alpha is {:.2f}, error is {:.2f}".format( np.mean( allAlpha),errorAlpha )
+
+
+
+
+		fig.tight_layout()
+		plt.savefig( "compareParaAlpha.pdf"  ,  bbox_inches='tight')
+		plt.savefig( "compareParaAlpha.png"  ,  bbox_inches='tight',dpi=300)
+
+
+	def areaDistribution(self):
+
+		algDendro="Dendrogram"
+		tb8Den,tb16Den,label8Den,label16Den,sigmaListDen=self.getTBList(algorithm=algDendro)
+		tb8Den=self.removeAllEdges(tb8Den)
+		tb16Den=self.removeAllEdges(tb16Den)
+
+
+		algDB="DBSCAN"
+		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
+		tb8DB=self.removeAllEdges(tb8DB)
+		tb16DB=self.removeAllEdges(tb16DB)
+
+
+
+		#aaaaaa
+
+		fig=plt.figure(figsize=(15,6))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		#plot dendrogram
+		axDendro=fig.add_subplot(1,3,1)
+
+		#self.drawNumber(axDendro,tb8Den,tb16Den,sigmaListDen)
+		at = AnchoredText(algDendro, loc=3, frameon=False)
+		axDendro.add_artist(at)
+
+		self.drawArea(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
+
+		axDendro.set_xlabel(r"Area (deg$^2$)")
+		axDendro.set_ylabel(r"Bin number of trunks ")
+
+
+		axDendro.set_yscale('log')
+		axDendro.set_xscale('log')
+
+		compoleteArea= 9*(1500./250)**2*0.25/3600. #0.0225
+
+
+
+
+		axDendro.plot( [compoleteArea,compoleteArea],[2,2000],'--',color='black', lw=1  )
+
+
+		axDendro.legend(loc=1, ncol=2 )
+		#plot DBSCAN
+		axDB=fig.add_subplot(1,3,2,sharex=axDendro,sharey=axDendro )
+		#self.drawNumber(axDB,tb8DB,tb16DB,sigmaListDB)
+		self.drawArea(axDB,tb8DB,tb16DB, label8DB,label16DB, sigmaListDB)
+
+
+		at = AnchoredText(algDB, loc=3, frameon=False)
+		axDB.add_artist(at)
+		axDB.plot( [compoleteArea,compoleteArea],[2,2000],'--',color='black', lw=1  )
+		axDB.set_xlabel(r"Area (deg$^2$)")
+		axDB.set_ylabel(r"Bin number of trunks ")
+
+		axDB.set_yscale('log')
+		axDB.set_xscale('log')
+
+		axDB.legend(loc=1, ncol=2 )
+
+		#plot SCIMES
+
+
+
+
+		fig.tight_layout()
+		plt.savefig( "compareParaArea.pdf"  ,  bbox_inches='tight')
+		plt.savefig( "compareParaArea.png"  ,  bbox_inches='tight',dpi=300)
+
+
+
+
+
+	def numberDistribution(self):
+		"""
+		Compare the change of molecular cloud numbers with
+		:return:
+		"""
+		algDendro="Dendrogram"
+		tb8Den,tb16Den,label8Den,label16Den,sigmaListDen=self.getTBList(algorithm=algDendro)
+		tb8Den=self.removeAllEdges(tb8Den)
+		tb16Den=self.removeAllEdges(tb16Den)
+
+
+		algDB="DBSCAN"
+		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
+		tb8DB=self.removeAllEdges(tb8DB)
+		tb16DB=self.removeAllEdges(tb16DB)
+
+		fig=plt.figure(figsize=(15,6))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		#plot dendrogram
+		axDendro=fig.add_subplot(1,3,1)
+
+		self.drawNumber(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
+		at = AnchoredText(algDendro, loc=1, frameon=False)
+		axDendro.add_artist(at)
+		axDendro.set_ylabel(r"Total number of trunks")
+		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
+		axDendro.legend(loc=3)
+		#plot DBSCAN
+		axDB=fig.add_subplot(1,3,2,sharex=axDendro)
+		self.drawNumber(axDB,tb8DB,tb16DB, label8DB,  label16DB ,sigmaListDB)
+		at = AnchoredText(algDB, loc=1, frameon=False)
+		axDB.add_artist(at)
+
+		axDB.set_ylabel(r"Total number of clusters")
+
+		axDB.set_xlabel(r"CO cutoff ($\sigma$)")
+
+		axDB.legend(loc=3)
+
+		#plot SCIMES
+
+
+
+
+		fig.tight_layout()
+		plt.savefig( "compareParaNumber.pdf"  ,  bbox_inches='tight')
+		plt.savefig( "compareParaNumber.png"  ,  bbox_inches='tight',dpi=300)
+
+
+
+	def drawArea(self,ax,tb8List,tb16List, label8,label16, sigmaListDen ):
+
+
+
+		areaEdges=np.linspace(0.25/3600.,150,10000)
+		areaCenter=self.getEdgeCenter( areaEdges )
+
+
+		totalTB=tb8List+tb16List
+		labelStr=label8+label16
+
+		for i in range( len(totalTB) ):
+
+			eachTB = totalTB[i]
+
+			binN,binEdges=np.histogram(eachTB["area_exact"]/3600., bins=areaEdges  )
+
+
+			ax.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,label=labelStr[i] ,alpha= 0.5 )
+
+
+
+	def drawNumber(self,ax,tb8List,tb16List,label8,label16,sigmaListDen ):
+		Nlist8Den=self.getNList(tb8List)
+		Nlist16Den=self.getNList(tb16List)
+
+
+		ax.plot(sigmaListDen,Nlist8Den,'o-',label="min\_nPix = 8",color="blue",lw=0.5)
+		ax.plot(sigmaListDen,Nlist16Den,'o-',label="min\_nPix = 16",color="green", lw=0.5)
+
+
+
+	def getAlphaList(self,tbList, minArea=0.0225 ):
+		# calculate alpha and  error for each alpha for each tb
+
+		alphaList=[]
+		errorList=[]
+
+		for eachTB in tbList:
+
+			area= eachTB["area_exact"]
+
+			meanA,stdA=self.getAlphaWithMCMC(  area, minArea= minArea ,  maxArea=None , physicalArea=False )
+
+			alphaList.append(meanA)
+			errorList.append( stdA)
+
+		return  alphaList,  errorList
+
+
+	def drawAlpha(self,ax,tb8List,tb16List, label8, label16,sigmaListDen ): #
+
+
+		#fitting alpha and draw
+
+		alpha8List, alpha8ErrorList = self.getAlphaList(tb8List)
+		#alpha16List, alpha16ErrorList = self.getAlphaList(tb16List)
+
+		#ax.plot(sigmaListDen,alpha8List,'o-',label="MinPix = 8",color="blue", markersize= 3, lw=1)
+		#ax.plot(sigmaListDen,alpha16List,'o-',label="MinPix = 16",color="green", lw=0.5, markersize= 2.5  ,  alpha=0.8 )
+
+		ax.errorbar(sigmaListDen, alpha8List, yerr= alpha8ErrorList , c='b', marker='o', capsize=1.5, elinewidth=0.8, lw=1,label=r"min\_nPix = 16" )
+
+		return alpha8List,alpha8ErrorList
+
 	def areaAndNumberDistribution(self, algorithm="Dendrogram" ):
 		"""
 		#draw the area the
@@ -1178,8 +1535,7 @@ class myDBSCAN(object):
 
 		tb8,tb16,label8,label16,sigmaList=self.getTBList(algorithm=algorithm)
 
-		tb8=self.removeAllEdges(tb8)
-		tb16=self.removeAllEdges(tb16)
+
 
 		#need to constrain the minP and PeakN, PeakSigma=lower sigma cut + 3 sigma, as the minDelta,
 
@@ -1217,6 +1573,8 @@ class myDBSCAN(object):
 
 
 		axArea= fig.add_subplot(1,2,2)
+
+
 
 		areaEdges=np.linspace(0,150,10000)
 		areaCenter=self.getEdgeCenter( areaEdges )
@@ -1307,7 +1665,8 @@ class myDBSCAN(object):
 
 
 
-			DbscanSigmaList= np.arange(2,6.5,0.5)
+			#DbscanSigmaList= np.arange(2,6.5,0.5)
+			DbscanSigmaList= np.arange(2,7.5,0.5)
 
 			for sigmas in DbscanSigmaList:
 				tbName= "G2650CO12DBCatS{:.1f}P{}Con2.fit".format(sigmas, minPix)
@@ -1337,8 +1696,9 @@ class myDBSCAN(object):
 			TBLabelsP8=[]
 			TBLabelsP16=[]
 
-			dendroSigmaList=[2,2.5 , 3, 3.5, 4,4.5,5, 5.5, 6]
+			#dendroSigmaList=[2,2.5 , 3, 3.5, 4,4.5,5, 5.5, 6]
 
+			dendroSigmaList=[2,2.5 , 3, 3.5, 4,4.5,5, 5.5, 6,6.5 ]
 
 			for sigmas in dendroSigmaList:
 				tbName8= "minV{}minP{}_dendroCatTrunk.fit".format(sigmas, 8)
@@ -1577,12 +1937,24 @@ class myDBSCAN(object):
 		plt.savefig("checkCloud.png", bbox_inches="tight",dpi=600)
 
 
+	def getLVFITSByDBMASK(self,DBlabel,CO12FITS,PVHeadTempFITS):
+		dataDB, headDB = myFITS.readFITS( DBlabel )
+		dataCO,headCO= myFITS.readFITS( CO12FITS )
 
+		pvData,pvHead= myFITS.readFITS( PVHeadTempFITS )
 
+		mask=dataDB>0
+		mask=mask+0
+		coMask=dataCO*mask
+		Nz,Ny,Nx=dataCO.shape
+		pvData=np.nansum(coMask, axis=1 )/Ny
+
+		fits.writeto("G2650PV_DBMASK.fits",pvData,header=pvHead, overwrite=True)
 
 
 	def ZZ(self):
 		pass
+
 
 
 doDBSCAN=myDBSCAN()
@@ -1597,16 +1969,88 @@ localCO13="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Local30CO13.fits"
 G210CO12="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO12sm.fits"
 G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
 
+ursaMajor=""
 
+#veloicty distance, relation
+# 13.46359868  4.24787753
 
+if 0: #high Galacticlatitudes, ursa major
+	doDBSCAN.rms=0.16
+	coFITS12UM="/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/myCut12CO.fits"
+	COData,COHead=myFITS.readFITS( coFITS12UM)
+	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=2, min_pix=8, connectivity=2, region="UMCO12")
+
+	#doDBSCAN.getCatFromLabelArray(coFITS12UM,"UMCO12dbscanS2P8Con2.fits",doDBSCAN.TBModel,saveMarker="UMCO12_2_8")
+	doDBSCAN.drawAreaDistribute("UMCO12_2_8.fit" , region="Taurus" )
+
+	sys.exit()
 
 
 if 1:
-	#doDBSCAN.drawCloudMap()
+	#doDBSCAN.alphaDistribution()
 
-	doDBSCAN.drawAreaDistribute("ClusterCat_3_16Ve20.fit" , region="scimes" )
+	#doDBSCAN.areaDistribution()
+	doDBSCAN.numberDistribution()
 
 	sys.exit()
+
+
+if 0:
+	# doDBSCAN.drawCloudMap()
+	#doDBSCAN
+	#doDBSCAN.drawAreaDistribute("ClusterCat_3_16Ve20.fit", region="scimes")
+	#doDBSCAN.drawAreaDistribute("taurusDB3_8.fit" , region="scimes" )
+
+	sys.exit()
+
+
+
+
+
+
+if 1: #Taurus
+	COData,COHead=myFITS.readFITS( TaurusCO12FITS)
+	doDBSCAN.rms=0.3
+	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=3,min_pix=8,connectivity=2,region="Taurus")
+
+	#doDBSCAN.getCatFromLabelArray(TaurusCO12FITS,"TaurusdbscanS3P8Con2.fits",doDBSCAN.TBModel,saveMarker="taurusDB3_8")
+	#doDBSCAN.drawAreaDistribute("taurusDB3_8.fit" , region="Taurus" )
+
+	
+
+
+	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=1,min_pix=25,connectivity=3)
+
+	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=4,min_pix=9,connectivity=2)
+	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=5,min_pix=9,connectivity=2)
+	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=6,min_pix=9,connectivity=2)
+
+	sys.exit()
+
+
+if 0:
+
+
+	doDBSCAN.drawDBSCANNumber()
+	doDBSCAN.drawDBSCANArea()
+
+
+
+if 0: #dilation SCIMES
+
+	#scimesFITS= "/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits"
+	#rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
+
+	scimesFITS= "ClusterAsgn_3_16Ve20.fits"
+	rawFITS= G2650CO12FITS  #"/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
+
+	doDBSCAN.myDilation( scimesFITS , rawFITS, saveName="G2650SCIMES_3_16Ve20", startSigma=15 )
+
+	sys.exit()
+
+if 0:
+	doDBSCAN.getLVFITSByDBMASK( "G2650CO12dbscanS2.0P8Con2.fits", G2650CO12FITS, "/home/qzyan/WORK/myDownloads/testScimes/G2650PV.fits"  )
+
 
 
 
@@ -1631,9 +2075,7 @@ if 0: #test Fast Dendrogram
 
 
 
-if 0:
-	doDBSCAN.areaAndNumberDistribution(algorithm="Dendrogram")
-	doDBSCAN.areaAndNumberDistribution(algorithm="DBSCAN")
+
 
 
 if 0: # get catalog from extended fits
@@ -1644,24 +2086,9 @@ if 0: # get catalog from extended fits
 
 
 
-if 0:
 
 
-	doDBSCAN.drawDBSCANNumber()
-	doDBSCAN.drawDBSCANArea()
 
-
-if  0: #dilation
-
-	#scimesFITS= "/home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits"
-	#rawFITS="/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
-
-	scimesFITS= "/home/qzyan/WORK/myDownloads/MWISPcloud/distanceDendro/ClusterAsgn_Ve20.fits"
-	rawFITS= G2650CO12FITS  #"/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
-
-	doDBSCAN.myDilation( scimesFITS , rawFITS, saveName="G2650DisCloudVe20",startSigma=10)
-
-	sys.exit()
 
 if 0:
 	#doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS2P16Con2.fits",doDBSCAN.TBModel, saveMarker="G2650CO12DBCatS2P16Con2" )
@@ -1783,16 +2210,6 @@ if 0:#Example
 	COData,COHead=myFITS.readFITS( CO12FITS)
 	doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=i,min_pix=9,connectivity=2)
 
-
-if 0: #Taurus
-	COData,COHead=myFITS.readFITS( TaurusCO12FITS)
-
-	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=1,min_pix=25,connectivity=3)
-	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=2,min_pix=9,connectivity=2)
-	doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=3,min_pix=9,connectivity=2)
-	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=4,min_pix=9,connectivity=2)
-	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=5,min_pix=9,connectivity=2)
-	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=6,min_pix=9,connectivity=2)
 
 
 
