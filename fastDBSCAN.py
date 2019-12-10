@@ -470,6 +470,27 @@ class myDBSCAN(object):
 		#fits.writeto(self.regionName+"NewCloud.fits", dataClusterNew,header=headCluster,overwrite=True   )
 		catTB.write( saveName ,overwrite=True)
 
+	def getSumToFluxFactor(self):
+
+		theta =  np.deg2rad(0.5/60)
+		omega = theta * theta
+		f=115.271202000
+		waveLength =299792458/(f*1e9)
+		k= 1.38064852e3 #has converted to jansky
+		factorSumToFlux=  2*k*omega/waveLength/waveLength
+		
+		return factorSumToFlux
+	def converSumToFlux(self,sumRow):
+
+		factorSumToFlux=self.getSumToFluxFactor(factorSumToFlux)
+
+		return sumRow* factorSumToFlux #jansky
+
+	def converFluxToSum(self, fluxRow):
+		factorSumToFlux=self.getSumToFluxFactor(factorSumToFlux)
+
+		return fluxRow/factorSumToFlux
+
 
 	def getIndices(self,Z0,Y0,X0,values1D,choseID):
 
@@ -557,6 +578,8 @@ class myDBSCAN(object):
 		:return:
 		"""
 		peakV=(minV + minDelta)*self.rms
+
+
 
 		if type(dbTB)==list:
 			newList=[]
@@ -1255,6 +1278,20 @@ class myDBSCAN(object):
 
 
 
+	def getTotalFluxList(self,TBList):
+
+		fluxlist=[]
+
+		for eachTB in TBList:
+
+			if "sum" in eachTB.colnames:
+				toalFlux=np.nansum( eachTB["sum"]  )*0.2 # K km/s
+
+			else:
+				toalFlux=np.nansum( eachTB["flux"]  )*0.2/self.getSumToFluxFactor() # K km/s
+
+			fluxlist.append(  toalFlux  )
+		return fluxlist
 
 
 
@@ -1292,7 +1329,7 @@ class myDBSCAN(object):
 		axDendro.add_artist(at)
 		axDendro.set_ylabel(r"$\alpha$")
 		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
-		axDendro.legend(loc=3)
+
 
 
 
@@ -1309,7 +1346,7 @@ class myDBSCAN(object):
 
 		axDB.set_xlabel(r"CO cutoff ($\sigma$)")
 
-		axDB.legend(loc=3)
+
 
 		##########plot SCIMES
 
@@ -1321,14 +1358,101 @@ class myDBSCAN(object):
 		errorAlpha= np.mean(allAlphaError )**2+  np.std(allAlpha,ddof=1)**2
 		errorAlpha=np.sqrt( errorAlpha )
 
-		print "The mean alpha is {:.2f}, error is {:.2f}".format( np.mean( allAlpha),errorAlpha )
+		alphaMean= np.mean( allAlpha)
+
+		print "The mean alpha is {:.2f}, error is {:.2f}".format(alphaMean,errorAlpha )
+
+
+		#draw Average Alpha
+
+		axDendro.plot([min(sigmaListDB),max(sigmaListDB)],  [alphaMean, alphaMean],'g--',lw=1 )
+
+		axDB.plot([min(sigmaListDB),max(sigmaListDB)],  [alphaMean, alphaMean],'g--',lw=1 )
 
 
 
+
+		axDendro.legend(loc=3)
+		axDB.legend(loc=3)
 
 		fig.tight_layout()
 		plt.savefig( "compareParaAlpha.pdf"  ,  bbox_inches='tight')
 		plt.savefig( "compareParaAlpha.png"  ,  bbox_inches='tight',dpi=300)
+
+
+
+
+
+
+	def fluxDistribution(self):
+		algDendro="Dendrogram"
+		tb8Den,tb16Den,label8Den,label16Den,sigmaListDen=self.getTBList(algorithm=algDendro)
+		tb8Den=self.removeAllEdges(tb8Den)
+		tb16Den=self.removeAllEdges(tb16Den)
+
+
+		algDB="DBSCAN"
+		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
+		tb8DB=self.removeAllEdges(tb8DB)
+		tb16DB=self.removeAllEdges(tb16DB)
+
+		compoleteFluxa= 9*(1500./250)**2*0.2*1.5 # 2 sigma
+
+
+		#aaaaaa
+
+		fig=plt.figure(figsize=(20,6))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		#plot dendrogram
+		axDendro=fig.add_subplot(1,3,1)
+
+
+
+		at = AnchoredText(algDendro, loc=3, frameon=False)
+		axDendro.add_artist(at)
+
+		self.drawFlux(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
+
+		axDendro.set_xlabel(r"Flux (K km s$^{-1}$)")
+		axDendro.set_ylabel(r"Bin number of trunks ")
+
+
+		axDendro.set_yscale('log')
+		axDendro.set_xscale('log')
+		#axDendro.plot( [compoleteFluxa,compoleteFluxa],[2,800],'--',color='black', lw=1  )
+
+
+
+		axDendro.legend(loc=1, ncol=2 )
+		#plot DBSCAN
+		axDB=fig.add_subplot(1,3,2,sharex=axDendro,sharey=axDendro )
+
+		self.drawFlux(axDB,tb8DB,tb16DB, label8DB,label16DB, sigmaListDB)
+
+
+		at = AnchoredText(algDB, loc=3, frameon=False)
+		axDB.add_artist(at)
+
+		axDB.set_xlabel(r"Flux (K km s$^{-1}$)")
+		axDB.set_ylabel(r"Bin number of trunks ")
+
+		axDB.set_yscale('log')
+		axDB.set_xscale('log')
+
+		axDB.legend(loc=1, ncol=2 )
+
+
+
+		fig.tight_layout()
+		plt.savefig( "compareParaFlux.pdf"  ,  bbox_inches='tight')
+		plt.savefig( "compareParaFlux.png"  ,  bbox_inches='tight',dpi=300)
+
+
+
+
+
 
 
 	def areaDistribution(self):
@@ -1406,6 +1530,55 @@ class myDBSCAN(object):
 
 
 
+	def totaFluxDistribution(self):
+		"""
+		Compare the change of molecular cloud numbers with
+		:return:
+		"""
+		algDendro="Dendrogram"
+		tb8Den,tb16Den,label8Den,label16Den,sigmaListDen=self.getTBList(algorithm=algDendro)
+		tb8Den=self.removeAllEdges(tb8Den)
+		tb16Den=self.removeAllEdges(tb16Den)
+
+
+		algDB="DBSCAN"
+		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
+		tb8DB=self.removeAllEdges(tb8DB)
+		tb16DB=self.removeAllEdges(tb16DB)
+
+		fig=plt.figure(figsize=(15,6))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		#plot dendrogram
+		axDendro=fig.add_subplot(1,3,1)
+
+		self.drawTotalFlux(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
+		at = AnchoredText(algDendro, loc=1, frameon=False)
+		axDendro.add_artist(at)
+		axDendro.set_ylabel(r"Total Flux (K km s$^-1$)")
+		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
+		axDendro.legend(loc=3)
+		#plot DBSCAN
+		axDB=fig.add_subplot(1,3,2,sharex=axDendro,sharey=axDendro)
+		self.drawTotalFlux(axDB,tb8DB,tb16DB, label8DB,  label16DB ,sigmaListDB)
+		at = AnchoredText(algDB, loc=1, frameon=False)
+		axDB.add_artist(at)
+
+		axDB.set_ylabel(r"Total Flux (K km s$^-1$)")
+
+		axDB.set_xlabel(r"CO cutoff ($\sigma$)")
+
+		axDB.legend(loc=4)
+
+		#plot SCIMES
+
+
+
+		fig.tight_layout()
+		plt.savefig( "compareParaTotalFlux.pdf"  ,  bbox_inches='tight')
+		plt.savefig( "compareParaTotalFlux.png"  ,  bbox_inches='tight',dpi=300)
+
 
 	def numberDistribution(self):
 		"""
@@ -1458,6 +1631,46 @@ class myDBSCAN(object):
 		plt.savefig( "compareParaNumber.png"  ,  bbox_inches='tight',dpi=300)
 
 
+	def drawFlux(self,ax,tb8List,tb16List, label8,label16, sigmaListDen ):
+
+		#areaEdges=np.linspace(0.25/3600.,150,10000)
+		#areaCenter=self.getEdgeCenter( areaEdges )
+
+		areaEdges=np.linspace(8,1e5,3000)
+		areaCenter=self.getEdgeCenter( areaEdges )
+
+
+		totalTB=tb8List+tb16List
+		labelStr=label8+label16
+
+		for i in range( len(totalTB) ):
+
+			eachTB = totalTB[i]
+			if "sum" not in  eachTB.colnames:
+				#dendrogra
+				sum=eachTB["flux"]/self.getSumToFluxFactor()*0.2 # K km/s
+
+			else: #dbscan
+
+
+
+				sum=eachTB["sum"]*0.2 # K km/s
+
+
+			######
+			#self.getAlphaWithMCMC(sum, minArea= 324*sigmaListDen[i]*0.2 , maxArea=None, physicalArea=True)
+
+
+
+
+
+			binN,binEdges=np.histogram( sum , bins=areaEdges  )
+
+
+			ax.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,label=labelStr[i] ,alpha= 0.5 )
+
+
+
 
 	def drawArea(self,ax,tb8List,tb16List, label8,label16, sigmaListDen ):
 
@@ -1491,6 +1704,21 @@ class myDBSCAN(object):
 
 
 
+
+	def drawTotalFlux(self,ax,tb8List,tb16List,label8,label16,sigmaListDen ):
+		Nlist8Den=self.getTotalFluxList(tb8List)
+		#Nlist16Den=self.getTotalFluxList(tb16List)
+
+
+		#print Nlist8Den
+		#print Nlist16Den
+
+		ax.plot(sigmaListDen,Nlist8Den,'o-',label="min\_nPix = 8",color="blue",lw=0.5)
+		#ax.plot(sigmaListDen,Nlist16Den,'o-',label="min\_nPix = 16",color="green", lw=0.5)
+
+
+
+
 	def getAlphaList(self,tbList, minArea=0.0225 ):
 		# calculate alpha and  error for each alpha for each tb
 
@@ -1501,7 +1729,7 @@ class myDBSCAN(object):
 
 			area= eachTB["area_exact"]
 
-			meanA,stdA=self.getAlphaWithMCMC(  area, minArea= minArea ,  maxArea=None , physicalArea=False )
+			meanA,stdA=self.getAlphaWithMCMC(  area ,  minArea= minArea ,  maxArea=None , physicalArea=False )
 
 			alphaList.append(meanA)
 			errorList.append( stdA)
@@ -1806,6 +2034,53 @@ class myDBSCAN(object):
 
 		self.setMinVandPeak(dbFITS,COFITS, peakSigma=minDelta+minV,minP=minP)
 
+	def clearnDBAssign(self,DBLabelFITS,DBTableFile	,pixN=8,minDelta=3,minV=2  ):
+
+		minPeak=(minV+minDelta)*self.rms
+		saveName="DBCLEAN{}_{}Label.fits".format( minV, pixN )
+		saveNameTB="DBCLEAN{}_{}TB.fit".format( minV, pixN )
+
+		DBTable=Table.read( DBTableFile )
+
+		dataCluster,headCluster=myFITS.readFITS(DBLabelFITS )
+
+		clusterIndex1D= np.where( dataCluster>0 )
+		clusterValue1D=  dataCluster[clusterIndex1D ]
+
+		Z0,Y0,X0 = clusterIndex1D
+		#cloudIndex = self.getIndices(Z0, Y0, X0, clusterValue1D, newID)
+
+		emptyTB= Table( DBTable[0] )
+		print "Cleaning DBSCAN table..."
+
+		widgets = ['Recalculating cloud parameters: ', Percentage(), ' ', Bar(marker='0',left='[',right=']'),  ' ', ETA(), ' ', FileTransferSpeed()] #see docs for other options
+
+		pbar = ProgressBar(widgets=widgets, maxval=len(DBTable))
+		pbar.start()
+
+		indexRun=0
+		for eachDBRow in DBTable:
+			indexRun=indexRun+1
+			pbar.update(indexRun)
+			cloudID=  eachDBRow["_idx"]
+
+			pixNCloud=int(  eachDBRow["pixN"]  )
+			peakCloud= eachDBRow["peak"]
+
+			if peakCloud < minPeak or pixNCloud< pixN : # set as zero
+
+				cloudIndex = self.getIndices(Z0, Y0, X0, clusterValue1D, cloudID)
+				dataCluster[cloudIndex] = 0
+
+				continue
+			emptyTB.add_row( eachDBRow  )
+		pbar.finish()
+		#save
+		fits.writeto(saveName,dataCluster,header=headCluster,overwrite=True)
+
+		emptyTB.write( saveNameTB,overwrite=True  )
+
+		return saveName, saveNameTB
 
 	def drawCloudMap(self,drawChannel=98):
 		"""
@@ -1827,8 +2102,13 @@ class myDBSCAN(object):
 
 		channelRawCO=data[drawChannel]
 
-
+		DBLabelFITS = "G2650CO12dbscanS2.0P8Con2.fits"
+		DBTableFile= "G2650CO12DBCatS2.0P8Con2.fit"
 		drawDBSCANtb=Table.read("G2650CO12DBCatS2.0P8Con2.fit")
+
+
+		relabelDB,newDBTable= self.clearnDBAssign( DBLabelFITS,DBTableFile	,pixN=16, minDelta=3, minV=2  )
+
 
 		drawDBSCANtb=self.cleanDBTB(drawDBSCANtb,minDelta=3,minV=2,pixN=16)
 
@@ -1837,6 +2117,10 @@ class myDBSCAN(object):
 
 
 		drawDBSCANData,drawDBSCANHead = myFITS.readFITS("G2650CO12dbscanS2.0P8Con2.fits")
+
+
+
+
 
 		channelDBSCAN = drawDBSCANData[drawChannel]
 
@@ -1851,12 +2135,14 @@ class myDBSCAN(object):
 
 		drawDENDROData,drawDENDROHead = myFITS.readFITS("minV2minP16_TrunkAsign.fits")
 
-		channelDENDRO = drawDENDROData[drawChannel]
+		channelDENDRO =  drawDENDROData[drawChannel]
 
 		dendroClouds=np.unique(channelDENDRO)
 
 
-		maximumArea=16*0.25 #arcmin^2
+
+
+		maximumArea= 144 *0.25 #arcmin^2
 
 		#
 		#print drawDBSCANtb.colnames
@@ -1874,8 +2160,20 @@ class myDBSCAN(object):
 
 
 		#draw Dendrogram.............
+		#the trunk assign of Dendrogrom is wong, the cloud0 ara all missed, so we ignore them
+
+		runIndex=0
 
 		for eachDRC in dendroClouds:
+
+			if runIndex == 0:
+				labelDendro = "Dendrogram"
+
+
+			else:
+				labelDendro = None
+
+
 			eachDRC=int(eachDRC)
 			if eachDRC==0:
 				continue
@@ -1894,14 +2192,25 @@ class myDBSCAN(object):
 				if np.isnan(cRow["x_cen"] ):
 					continue
 				#print eachDRC
-				axCO.scatter(cRow["x_cen"], cRow["y_cen"]  , s=13,facecolors='none',edgecolors='r',linewidths=0.3 )
 
 
+
+				axCO.scatter(cRow["x_cen"], cRow["y_cen"], s=13,facecolors='none',edgecolors='r', linewidths=0.3,  label= labelDendro  )
+				runIndex=runIndex+1
 
 
 		#draw DBSCAN.............
-
+		runIndex=0
 		for eachDBC in dbClouds:
+
+
+
+			if runIndex == 0:
+				labelDB = "DBSCAN"
+
+
+			else:
+				labelDB = None
 
 			if eachDBC==0:
 				continue
@@ -1924,12 +2233,16 @@ class myDBSCAN(object):
 					continue
 
 
-				axCO["gal"].scatter(cRow["x_cen"], cRow["y_cen"]  , s=10,facecolors='none',edgecolors='b',linewidths=0.3 )
+				axCO["gal"].scatter(cRow["x_cen"], cRow["y_cen"]  , s=10,facecolors='none',edgecolors='b',linewidths=0.3, label= labelDB )
+				runIndex=runIndex+1
 
-
+		axCO.legend(loc=3)
 
 		axCO.set_ticklabel_type("absdeg", "absdeg")
 		axCO.axis[:].major_ticks.set_color("w")
+
+		axCO.set_xlim( [1050, 1650] )
+		axCO.set_ylim( [425,  865 ] )
 
 		fig.tight_layout()
 		plt.savefig("checkCloud.pdf", bbox_inches="tight")
@@ -1950,6 +2263,20 @@ class myDBSCAN(object):
 		pvData=np.nansum(coMask, axis=1 )/Ny
 
 		fits.writeto("G2650PV_DBMASK.fits",pvData,header=pvHead, overwrite=True)
+
+	def cleanAllDBfits(self):
+
+		# DbscanSigmaList= np.arange(2,6.5,0.5)
+		DbscanSigmaList = np.arange(2, 7.5, 0.5)
+
+		for sigmas in DbscanSigmaList:
+			for minPix in [8,16]:
+
+				tbName = "G2650CO12DBCatS{:.1f}P{}Con2.fit".format(sigmas, 8)
+				fitsName = "G2650CO12dbscanS{:.1f}P{}Con2.fits".format(sigmas, 8 )
+				self.clearnDBAssign( fitsName,tbName, pixN=minPix, minV=sigmas, minDelta= 3 )
+
+
 
 
 	def ZZ(self):
@@ -1974,6 +2301,44 @@ ursaMajor=""
 #veloicty distance, relation
 # 13.46359868  4.24787753
 
+
+
+
+if 1:
+	doDBSCAN.totaFluxDistribution()
+
+
+	#doDBSCAN.fluxDistribution()
+
+	#doDBSCAN.alphaDistribution()
+
+	#doDBSCAN.areaDistribution()
+	#doDBSCAN.numberDistribution()
+
+	sys.exit()
+
+
+
+
+if 0:
+
+	#clean
+
+	doDBSCAN.cleanAllDBfits()
+	sys.exit()
+
+
+if 0:
+	doDBSCAN.drawCloudMap(drawChannel= 50 )
+	#doDBSCAN
+	#doDBSCAN.drawAreaDistribute("ClusterCat_3_16Ve20.fit", region="scimes")
+	#doDBSCAN.drawAreaDistribute("taurusDB3_8.fit" , region="scimes" )
+
+	sys.exit()
+
+
+
+
 if 0: #high Galacticlatitudes, ursa major
 	doDBSCAN.rms=0.16
 	coFITS12UM="/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/myCut12CO.fits"
@@ -1986,22 +2351,6 @@ if 0: #high Galacticlatitudes, ursa major
 	sys.exit()
 
 
-if 1:
-	#doDBSCAN.alphaDistribution()
-
-	#doDBSCAN.areaDistribution()
-	doDBSCAN.numberDistribution()
-
-	sys.exit()
-
-
-if 0:
-	# doDBSCAN.drawCloudMap()
-	#doDBSCAN
-	#doDBSCAN.drawAreaDistribute("ClusterCat_3_16Ve20.fit", region="scimes")
-	#doDBSCAN.drawAreaDistribute("taurusDB3_8.fit" , region="scimes" )
-
-	sys.exit()
 
 
 
