@@ -157,7 +157,9 @@ class myDBSCAN(object):
 		Nz,Ny,Nx  = COdata.shape
 		extendMask = np.zeros([Nz+2,Ny+2,Nx+2] ,dtype=int)
 
-		extendMask[1:-1,1:-1,1:-1] = COdata>=minValue    #[COdata>=minValue]=1
+		goodValues= COdata>=minValue
+
+		extendMask[1:-1,1:-1,1:-1] =  goodValues  #[COdata>=minValue]=1
 
 		s=generate_binary_structure(3,connectivity)
 
@@ -172,13 +174,15 @@ class myDBSCAN(object):
 			coreArray=self.sumEdgeByCon3(extendMask)
 
 		coreArray = coreArray>=min_pix
-		coreArray[ COdata<minValue  ]=False #remove falsely, there is a possibility that, a bad value may have lots of pixels around
+		coreArray[  ~goodValues ]=False  # nan could be, #remove falsely, there is a possibility that, a bad value may have lots of pixels around and clould be
 		coreArray=coreArray+0
 
 		labeled_core, num_features=label(coreArray,structure=s) #first label core, then expand, otherwise, the expanding would wrongly connected
-		selectExpand= np.logical_and(labeled_core==0, COdata>=minValue  )
+		selectExpand= np.logical_and(labeled_core==0,  goodValues   )
 		#expand labeled_core
 		#coreLabelCopy=labeled_core.copy()
+
+
 
 		expandTry = dilation(labeled_core , s  ) # first try to expand, then only keep those region that are not occupied previously
 
@@ -330,7 +334,7 @@ class myDBSCAN(object):
 		###
 		dataCO, headCO = myFITS.readFITS( CO12FITS )
 
-		dataCO=np.nan_to_num(dataCO)
+		#dataCO=np.nan_to_num(dataCO), should not have none values
 
 
 		dataCluster , headCluster=myFITS.readFITS( labelFITS )
@@ -438,7 +442,7 @@ class myDBSCAN(object):
 			area_exact=len(pixelsN)*0.25 #arc mins square
 
 
-			dataClusterNew[cloudIndex] =newID
+			#dataClusterNew[cloudIndex] =newID
 
 			#save values
 			newRow["pixN"]= pixN
@@ -922,6 +926,7 @@ class myDBSCAN(object):
 		allSample=np.concatenate(  [ part1 , part2 ]    )
 
 
+
 		#test plot
 		if plotTest:
 			fig = plt.figure(figsize=(12, 6))
@@ -1363,6 +1368,8 @@ class myDBSCAN(object):
 		print "The mean alpha is {:.2f}, error is {:.2f}".format(alphaMean,errorAlpha )
 
 
+
+
 		#draw Average Alpha
 
 		axDendro.plot([min(sigmaListDB),max(sigmaListDB)],  [alphaMean, alphaMean],'g--',lw=1 )
@@ -1546,32 +1553,33 @@ class myDBSCAN(object):
 		tb8DB=self.removeAllEdges(tb8DB)
 		tb16DB=self.removeAllEdges(tb16DB)
 
-		fig=plt.figure(figsize=(15,6))
+		fig=plt.figure(figsize=(8,6))
 		rc('text', usetex=True )
 		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
 
 		#plot dendrogram
-		axDendro=fig.add_subplot(1,3,1)
+		axDendro=fig.add_subplot(1,1,1)
 
-		self.drawTotalFlux(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
-		at = AnchoredText(algDendro, loc=1, frameon=False)
-		axDendro.add_artist(at)
+		#self.drawTotalFlux(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
+
+		#Nlist8Den=self.getTotalFluxList(tb8List)
+		Nlist16Den=self.getTotalFluxList(tb16Den)
+		axDendro.plot(sigmaListDen,Nlist16Den,'o-' , color="green", lw=0.5,label=algDendro )
+
+
+
+
 		axDendro.set_ylabel(r"Total Flux (K km s$^-1$)")
 		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
-		axDendro.legend(loc=3)
+
+
+
 		#plot DBSCAN
-		axDB=fig.add_subplot(1,3,2,sharex=axDendro,sharey=axDendro)
-		self.drawTotalFlux(axDB,tb8DB,tb16DB, label8DB,  label16DB ,sigmaListDB)
-		at = AnchoredText(algDB, loc=1, frameon=False)
-		axDB.add_artist(at)
+		Nlist16DB=self.getTotalFluxList( tb16DB )
 
-		axDB.set_ylabel(r"Total Flux (K km s$^-1$)")
+		axDendro.plot(sigmaListDB,Nlist16DB,'o-' , color="blue", lw=0.5,label= algDB )
 
-		axDB.set_xlabel(r"CO cutoff ($\sigma$)")
-
-		axDB.legend(loc=4)
-
-		#plot SCIMES
+		axDendro.legend(loc=1)
 
 
 
@@ -1706,15 +1714,12 @@ class myDBSCAN(object):
 
 
 	def drawTotalFlux(self,ax,tb8List,tb16List,label8,label16,sigmaListDen ):
-		Nlist8Den=self.getTotalFluxList(tb8List)
-		#Nlist16Den=self.getTotalFluxList(tb16List)
+		#Nlist8Den=self.getTotalFluxList(tb8List)
+		Nlist16Den=self.getTotalFluxList(tb16List)
 
 
-		#print Nlist8Den
-		#print Nlist16Den
-
-		ax.plot(sigmaListDen,Nlist8Den,'o-',label="min\_nPix = 8",color="blue",lw=0.5)
-		#ax.plot(sigmaListDen,Nlist16Den,'o-',label="min\_nPix = 16",color="green", lw=0.5)
+		#ax.plot(sigmaListDen,Nlist8Den,'o-',label="min\_nPix = 8",color="blue",lw=0.5)
+		ax.plot(sigmaListDen,Nlist16Den,'o-' , color="green", lw=0.5)
 
 
 
@@ -1890,8 +1895,6 @@ class myDBSCAN(object):
 			TBLabelsP8=[]
 			TBLabelsP16=[]
 			minPix=8
-
-
 
 			#DbscanSigmaList= np.arange(2,6.5,0.5)
 			DbscanSigmaList= np.arange(2,7.5,0.5)
@@ -2301,10 +2304,15 @@ ursaMajor=""
 #veloicty distance, relation
 # 13.46359868  4.24787753
 
+if 0:
+
+	doDBSCAN.getCatFromLabelArray( G2650CO12FITS, "G2650CO12dbscanS3.0P8Con2.fits", doDBSCAN.TBModel, minPix=8, rms=3, saveMarker="testNanValue" )
+
+	sys.exit()
+
+if 0:
 
 
-
-if 1:
 	doDBSCAN.totaFluxDistribution()
 
 
@@ -2320,11 +2328,32 @@ if 1:
 
 
 
-if 0:
+
+
+
+if 1: #DBSCAN PipeLine
+
+	if 1: #produce all DBSCAN cases
+		COData, COHead = myFITS.readFITS(G2650CO12FITS)
+
+		DbscanSigmaList = np.arange(2, 7.5, 0.5)
+		for sigmas in DbscanSigmaList:
+			print "Calculating ",sigmas
+			doDBSCAN.computeDBSCAN(  COData,COHead, min_sigma=sigmas, min_pix=8, connectivity=2, region="G2650CO12")
+
+
+	if 0:
+		for i in np.arange(2 ,8,0.5):
+			savename="G2650CO12DBCatS{}P{}Con2".format(i,8)
+			doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS{}P8Con2.fits".format(i),doDBSCAN.TBModel,saveMarker=savename)
+
+
+
+
 
 	#clean
 
-	doDBSCAN.cleanAllDBfits()
+	#doDBSCAN.cleanAllDBfits()
 	sys.exit()
 
 
@@ -2357,7 +2386,7 @@ if 0: #high Galacticlatitudes, ursa major
 
 
 
-if 1: #Taurus
+if 0: #Taurus
 	COData,COHead=myFITS.readFITS( TaurusCO12FITS)
 	doDBSCAN.rms=0.3
 	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=3,min_pix=8,connectivity=2,region="Taurus")

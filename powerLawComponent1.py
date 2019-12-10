@@ -23,6 +23,9 @@ class powerLaw1:
 
         return len(dataArraym) * np.log(normalFactor1) - alpha1 * np.sum(np.log(dataArraym))
 
+
+
+
     def fitPowerLawWithMCMCcomponent1(self, dataArray, sampleN=1000, burn_in=100, minV=None, maxV=None, thin=15):
         """
         fit a power law with MCMC
