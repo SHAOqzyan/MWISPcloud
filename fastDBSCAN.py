@@ -138,7 +138,7 @@ class myDBSCAN(object):
 
 
 
-	def computeDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=16, connectivity=2 ,region="" , getMask=False ):
+	def computeDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=16, connectivity=2 ,region="" , getMask=False,savePath="" ):
 		"""
 		min_pix the the minimum adjacen number for are core point
 		:param COdata:
@@ -185,19 +185,12 @@ class myDBSCAN(object):
 
 
 		expandTry = dilation(labeled_core , s  ) # first try to expand, then only keep those region that are not occupied previously
+		#it is possible  that a molecular cloud may have less pixN than 8, because of the closeness of two
 
 		labeled_core[  selectExpand  ] =  expandTry[ selectExpand  ]
 
-
-		#allArray[COdata<minValue ]=False #remove falsely expanded values
-		#allArray=labeled_core+0
-
-
 		labeled_array = labeled_core
 		saveName="{}dbscanS{}P{}Con{}.fits".format( region,min_sigma,min_pix,connectivity )
-
-
-
 
 		if getMask:
 
@@ -206,8 +199,8 @@ class myDBSCAN(object):
 
 		print num_features,"features found!"
 
-		fits.writeto(saveName, labeled_array, header=COHead, overwrite=True)
-		return saveName
+		fits.writeto(savePath+saveName, labeled_array, header=COHead, overwrite=True)
+		return savePath+saveName
 
 
 
@@ -224,7 +217,8 @@ class myDBSCAN(object):
 		fits.writeto("growMaskPeak3Min1.fits",labels,header=COHead,overwrite=True)
 
 
-	def myDilation(self,scimesFITS,rawCOFITS,startSigma=20,endSigma=2,saveName=""):
+
+	def myDilation(self,scimesFITS,rawCOFITS,startSigma=20,endSigma=2, saveName="", maskCOFITS=None,savePath="" ):
 		"""
 		#because SCIMES removes weak emissions in the envelop of clouds, we need to add them back
 		#one possible way is to use svm to split the trunk, test this con the  /home/qzyan/WORK/myDownloads/MWISPcloud/ClusterAsgn_ComplicateVe.fits
@@ -238,42 +232,66 @@ class myDBSCAN(object):
 
 		#rawFITS= rawCOFITS #"/home/qzyan/WORK/myDownloads/testScimes/complicatedTest.fits"
 
-		rawCO,rawHead=   myFITS.readFITS( rawCOFITS )
+
+		if rawCOFITS!=None:
+			rawCO,rawHead=   myFITS.readFITS( rawCOFITS )
+
+		if maskCOFITS!=None:
+
+			maskData,maskHead=myFITS.readFITS(maskCOFITS)
 
 		#the expansion should stars from high coValue, to low CO values, to avoid cloud cross wak bounarires
 		#sCon=generate_binary_structure(3,2)
 		print "Expanding clous..."
-		for sigmas in np.arange(startSigma,endSigma-1,-1):
+
+		sigmaSteps= np.arange(startSigma,endSigma-1,-1)
+
+		if endSigma not in sigmaSteps:
+			sigmaSteps=list(sigmaSteps)
+			sigmaSteps.append(endSigma)
+		print "Step of sigmas, ", sigmaSteps
+
+		cloudData = cloudData + 1  # to keep noise reagion  as 0
+		for sigmas in sigmaSteps:
 
 			#produceMask withDBSCAN
-			if sigmas>2:
-				COMask = self.computeDBSCAN( rawCO,rawHead, min_sigma=sigmas, min_pix=8, connectivity=2 ,region="" , getMask=True )
-
+			#if sigmas>2:
+			if maskCOFITS==None:
+				COMask = self.computeDBSCAN( rawCO,rawHead, min_sigma=sigmas, min_pix=8, connectivity=2 ,region="" , getMask=True ) #use all of them
 			else:
-				COMask = self.computeDBSCAN(  rawCO,rawHead, min_sigma=sigmas, min_pix=16, connectivity=2 ,region="" , getMask=True )
+				COMask=maskData>sigmas*self.rms
+			#else:
+				#COMask = self.computeDBSCAN(  rawCO,rawHead, min_sigma=sigmas, min_pix=16, connectivity=2 ,region="" , getMask=True )
 
 			for i in range(2000):
+
+
 				rawAssign=cloudData.copy()
-				cloudData=cloudData+1 #to keep reagion that has no cloud as 0
 
-				d1Try=dilation(cloudData  ) #expand with connectivity 1, connectivity 2, expandong two fast
+				d1Try=dilation(cloudData  ) #expand with connectivity 1, by defaults
 
-				assignRegion= np.where(np.logical_and(cloudData==0 , COMask ) )
-
+				assignRegion=  np.logical_and(cloudData==0 , COMask )
 				cloudData[ assignRegion ] = d1Try[ assignRegion ]
 
-				cloudData=cloudData-1
 
-				diff= rawAssign-cloudData
+				diff=cloudData -rawAssign
+				sumAll=np.sum(diff )
+				if sumAll==0:
+					print  "Sigmas: {}, Loop:{},  all difference:{}, beak".format(sigmas, i, sumAll)
 
-				print  "Sigmas: {}, Loop:{}, difference:{}".format(sigmas,i,np.sum(diff))
-				if np.sum(diff )==0:
 					break
 
+				else:
+					print  "Sigmas: {}, Loop:{}, all difference:{} continue".format(sigmas, i, sumAll)
+					continue
 
-		fits.writeto( saveName+"_extend.fits",cloudData ,header=cloudHead,overwrite=True)
 
 
+
+		cloudData=cloudData-1
+
+		fits.writeto( savePath+saveName+"_extend.fits",cloudData ,header=cloudHead,overwrite=True)
+		return savePath+saveName+"_extend.fits"
 
 
 
@@ -312,7 +330,7 @@ class myDBSCAN(object):
 			self.getCatFromLabelArray(COFITS,saveLabel,self.TBModel,saveMarker=saveMarker,  minPix=min_pix,rms= min_sigma  )
 
 
-	def getCatFromLabelArray(self,  CO12FITS,labelFITS,TBModel,minPix=8,rms=2 ,saveMarker="", peakSigma=3. ):
+	def getCatFromLabelArray(self,  CO12FITS,labelFITS,TBModel,minPix=8,rms=2 ,saveMarker="", peakSigma=3,region=""):
 		"""
 		Extract catalog from
 		:param labelArray:
@@ -320,11 +338,12 @@ class myDBSCAN(object):
 		:return:
 		"""
 
-
+		#do not make any selection here, because of the closeness of many clouds, some cloud may have pixels less than 8, we should keep them
+		#they are usefull to mask edge sources..., and to clean fits
 
 		if saveMarker=="":
 
-			saveName= "Sigma{}_P{}FastDBSCAN.fit".format(rms,minPix)
+			saveName= region+"DBSCAN{}_P{}Cat.fit".format(rms,minPix)
 
 		else:
 			saveName=saveMarker+".fit"
@@ -334,12 +353,12 @@ class myDBSCAN(object):
 		###
 		dataCO, headCO = myFITS.readFITS( CO12FITS )
 
-		#dataCO=np.nan_to_num(dataCO), should not have none values
+		#dataCO=np.nan_to_num(dataCO), should not have Nan values
 
 
 		dataCluster , headCluster=myFITS.readFITS( labelFITS )
 
-
+		minV=np.nanmin(dataCluster)
 		wcsCloud=WCS( headCluster )
 
 		minValue=np.min(dataCluster )
@@ -365,19 +384,20 @@ class myDBSCAN(object):
 		idCol="_idx"
 
 
+
 		#count all clusters
 
 		#ids,count=np.unique(dataCluster,return_counts=True )
 		ids,count=np.unique(clusterValue1D,return_counts=True )
 
-		GoodIDs=  ids[count>=minPix ]
+		#GoodIDs=  ids[count>=minPix ]
 
-		GoodCount = count[ count>=minPix  ]
+		#GoodCount = count[ count>=minPix  ]
 
-
-
+		GoodIDs=ids
+		GoodCount=count
 		print "Total number of turnks? ",len(ids)
-		print "Total number of Good Trunks? ",len(GoodIDs)
+		#print "Total number of Good Trunks? ",len(GoodIDs)
 
 		#dataCO,headCO=doFITS.readFITS( CO12FITS )
 		widgets = ['Recalculating cloud parameters: ', Percentage(), ' ', Bar(marker='0',left='[',right=']'),  ' ', ETA(), ' ', FileTransferSpeed()] #see docs for other options
@@ -385,22 +405,18 @@ class myDBSCAN(object):
 		pbar = ProgressBar(widgets=widgets, maxval=len(GoodIDs))
 		pbar.start()
 
-
-
 		catTB=newTB.copy()
-
 		catTB.remove_row(0)
 
-		runIndex=0
 
 
-
-		for i in  range(len(GoodIDs)) :
+		for i in  range(len(ids)) :
 
 			#i would be the newID
 			newID= GoodIDs[i]
 
-
+			if newID==minV: #this value is the masked values, for DBSCAN, is 0, and for dendrogram is 1.
+				continue
 
 			pixN=GoodCount[i]
 
@@ -414,14 +430,6 @@ class myDBSCAN(object):
 			coValues=  dataCO[ cloudIndex ]
 
 			peak=np.max( coValues)
-
-			#if peak<minPeak:
-
-				#pbar.update(runIndex)
-				#runIndex=runIndex+1
-
-				#continue
-
 
 			cloudV=cloudIndex[0]
 			cloudB=cloudIndex[1]
@@ -464,8 +472,8 @@ class myDBSCAN(object):
 
 			catTB.add_row(newRow)
 
-			pbar.update(runIndex)
-			runIndex=runIndex+1
+			pbar.update(i)
+
 
 
 		pbar.finish()
@@ -1259,6 +1267,8 @@ class myDBSCAN(object):
 
 			return part2
 
+
+
 	def removeAllEdges(self,TBList):
 		"""
 
@@ -1298,8 +1308,67 @@ class myDBSCAN(object):
 			fluxlist.append(  toalFlux  )
 		return fluxlist
 
+	def fluxAlphaDistribution(self):
+		"""
+
+		# draw alph distribution of flux, for each DBSCAN,
+
+		:return:
+		"""
+
+		algDendro = "Dendrogram"
+		tb8Den, tb16Den, label8Den, label16Den, sigmaListDen = self.getTBList(algorithm=algDendro)
+		tb8Den = self.removeAllEdges(tb8Den)
+		tb16Den = self.removeAllEdges(tb16Den)
+
+		algDB = "DBSCAN"
+		tb8DB, tb16DB, label8DB, label16DB, sigmaListDB = self.getTBList(algorithm=algDB)
+		tb8DB = self.removeAllEdges(tb8DB)
+		tb16DB = self.removeAllEdges(tb16DB)
+
+		fig = plt.figure(figsize=(10, 8))
+		rc('text', usetex=True)
+		rc('font', **{'family': 'sans-serif', 'size': 13, 'serif': ['Helvetica']})
+
+		#############   plot dendrogram
+		axDendro = fig.add_subplot(1, 1, 1)
+
+		alphaDendro, alphaDendroError = self.getFluxAlphaList(tb16Den, sigmaListDen)
+
+		axDendro.errorbar(sigmaListDen, alphaDendro, yerr=alphaDendroError, c='b', marker='o', capsize=1.8 , elinewidth=1.3, lw=1, label=algDendro)
+
+		axDendro.set_ylabel(r"$\alpha$ (flux)")
+		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
+
+		##############   plot DBSCAN
+
+		alphaDB, alphaDBError =   self.getFluxAlphaList(tb16DB, sigmaListDB)
+		axDendro.errorbar(sigmaListDB, alphaDB, yerr=alphaDBError, c='g', marker='o', capsize=1.8 , elinewidth=1.0, lw=1, label=algDendro)
 
 
+		##########plot SCIMES
+		if 1: #plot average alpha
+			allAlpha = alphaDB + alphaDendro
+			allAlphaError = alphaDBError + alphaDendroError
+
+			print "Average error, ", np.mean(allAlphaError)
+
+			errorAlpha = np.mean(allAlphaError) ** 2 + np.std(allAlpha, ddof=1) ** 2
+			errorAlpha = np.sqrt(errorAlpha)
+
+			alphaMean = np.mean(allAlpha)
+
+			print "The mean alpha of flux distribution is {:.2f}, error is {:.2f}".format(alphaMean, errorAlpha)
+
+			axDendro.plot([min(sigmaListDB), max(sigmaListDB)], [alphaMean, alphaMean], '--', color='black', lw=1)
+
+
+
+		axDendro.legend(loc=1)
+
+		fig.tight_layout()
+		plt.savefig("compareParaFluxAlpha.pdf", bbox_inches='tight')
+		plt.savefig("compareParaFluxAlpha.png", bbox_inches='tight', dpi=300)
 
 	def alphaDistribution(self):
 		"""
@@ -1322,16 +1391,18 @@ class myDBSCAN(object):
 
 
 
-		fig=plt.figure(figsize=(15,6))
+		fig=plt.figure(figsize=(10, 8))
 		rc('text', usetex=True )
 		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
 
 		#############   plot dendrogram
-		axDendro=fig.add_subplot(1,3,1)
-		alphaDendro, alphaDendroError = self.drawAlpha( axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
+		axDendro=fig.add_subplot(1,1,1)
 
-		at = AnchoredText(algDendro, loc=1, frameon=False)
-		axDendro.add_artist(at)
+		alphaDendro , alphaDendroError = self.getAlphaList( tb16Den )
+
+		axDendro.errorbar(sigmaListDen, alphaDendro, yerr= alphaDendroError , c='b', marker='o', capsize=1.5, elinewidth=1.3, lw=1,label= algDendro  )
+
+
 		axDendro.set_ylabel(r"$\alpha$")
 		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
 
@@ -1339,17 +1410,12 @@ class myDBSCAN(object):
 
 
 		##############   plot DBSCAN
-		axDB=fig.add_subplot(1,3,2,sharex=axDendro,sharey=axDendro)
-		#self.drawNumber(axDB,tb8DB,tb16DB, label8DB,  label16DB ,sigmaListDB)
 
-		alphaDB,  alphaDBError = self.drawAlpha( axDB,tb8DB,tb16DB, label8DB,  label16DB ,sigmaListDB)
+		#alphaDB,  alphaDBError = self.drawAlpha( axDB,tb8DB,tb16DB, label8DB,  label16DB ,sigmaListDB)
 
-		at = AnchoredText(algDB, loc=1, frameon=False)
-		axDB.add_artist(at)
+		alphaDB , alphaDBError = self.getAlphaList( tb16DB )
 
-		#axDB.set_ylabel(r"Total number of clusters")
-
-		axDB.set_xlabel(r"CO cutoff ($\sigma$)")
+		axDendro.errorbar(sigmaListDB, alphaDB, yerr= alphaDBError , c='g', marker='o', capsize=1.5, elinewidth=1.0, lw=1,label= algDendro  )
 
 
 
@@ -1367,20 +1433,9 @@ class myDBSCAN(object):
 
 		print "The mean alpha is {:.2f}, error is {:.2f}".format(alphaMean,errorAlpha )
 
+		axDendro.plot([min(sigmaListDB),max(sigmaListDB)],  [alphaMean, alphaMean],'--', color='black', lw=1 )
 
-
-
-		#draw Average Alpha
-
-		axDendro.plot([min(sigmaListDB),max(sigmaListDB)],  [alphaMean, alphaMean],'g--',lw=1 )
-
-		axDB.plot([min(sigmaListDB),max(sigmaListDB)],  [alphaMean, alphaMean],'g--',lw=1 )
-
-
-
-
-		axDendro.legend(loc=3)
-		axDB.legend(loc=3)
+		axDendro.legend(loc=1 )
 
 		fig.tight_layout()
 		plt.savefig( "compareParaAlpha.pdf"  ,  bbox_inches='tight')
@@ -1563,24 +1618,64 @@ class myDBSCAN(object):
 		#self.drawTotalFlux(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
 
 		#Nlist8Den=self.getTotalFluxList(tb8List)
-		Nlist16Den=self.getTotalFluxList(tb16Den)
-		axDendro.plot(sigmaListDen,Nlist16Den,'o-' , color="green", lw=0.5,label=algDendro )
+		fluxList16Den=self.getTotalFluxList(tb16Den)
+		axDendro.plot(sigmaListDen,fluxList16Den,'o-' , color="green",markersize=5, lw=2,label="Total flux (dendrogram)" )
 
 
-
-
-		axDendro.set_ylabel(r"Total Flux (K km s$^-1$)")
+		axDendro.set_ylabel(r"Total flux ($\rm K\ km\ s$$^{-1}$ $\Omega_\mathrm{pixel}$)")
 		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
 
 
 
 		#plot DBSCAN
-		Nlist16DB=self.getTotalFluxList( tb16DB )
+		fluxList16DB=self.getTotalFluxList( tb16DB )
 
-		axDendro.plot(sigmaListDB,Nlist16DB,'o-' , color="blue", lw=0.5,label= algDB )
+		axDendro.plot(sigmaListDB,fluxList16DB,'o--' ,linestyle=':', color="blue",markersize=4, lw=1.5,label= "Total flux (DBSCAN)", markerfacecolor='none' )
 
-		axDendro.legend(loc=1)
+		#drawTotal Flux
 
+		#axDendro.set_yscale('log')
+		maskCO,_=myFITS.readFITS("G2650CO12MaskedCO.fits")
+		totalFluxList=[]
+
+
+
+		for eachS in sigmaListDen:
+			maskCO[maskCO<eachS*self.rms]=0
+			sumCO= np.sum( maskCO)*0.2
+			totalFluxList.append( sumCO )
+
+		totalFluxRatioDendro=np.asarray( fluxList16Den ) /np.asarray( totalFluxList  )
+		totalFluxRatioDB=np.asarray( fluxList16DB ) /np.asarray( totalFluxList  )
+
+		tabBlue='tab:blue'
+		axDendro.plot(sigmaListDB,totalFluxList,'o-' ,   color="black",markersize=4, lw=1.5,label= "Total flux(cutoff mask)", markerfacecolor='none' )
+
+		axRatio = axDendro.twinx()  # instantiate a second axes that shares the same x-axis
+
+		axRatio.plot(sigmaListDen, totalFluxRatioDendro,'^-',color=tabBlue ,  markersize=3, lw=1.0, label= "Ratio to cutoff mask (dendrogram)", )
+
+		axRatio.plot(sigmaListDB, totalFluxRatioDB,'^--',color= tabBlue ,  markersize=3, lw=1.0,label= "Ratio to cutoff mask (DBSCAN)",  markerfacecolor='none' )
+
+
+
+		axRatio.set_ylabel('Ratio to cutoff mask', color= tabBlue )
+
+		#draw
+
+		axRatio.set_ylim([0.96,1])
+
+
+		axDendro.legend(loc=3)
+
+		leg=axRatio.legend(loc=1)
+		for text in leg.get_texts():
+			plt.setp(text, color=tabBlue)
+
+
+		axRatio.yaxis.label.set_color( tabBlue )
+		axRatio.spines["right"].set_edgecolor( tabBlue )
+		axRatio.tick_params(axis='y', colors= tabBlue )
 
 
 		fig.tight_layout()
@@ -1742,12 +1837,49 @@ class myDBSCAN(object):
 		return  alphaList,  errorList
 
 
+	def getFluxCol(self,TB):
+
+		if "sum" in TB.colnames:
+			return TB["sum"]*0.2 #K km/s
+
+
+		else:
+
+			return TB["flux"]*0.2/self.getSumToFluxFactor()
+
+
+	def getFluxAlphaList(self,tbList, sigmaList  ):
+		# calculate alpha and  error for each alpha for each tb
+
+		alphaList=[]
+		errorList=[]
+		for i in range( len(sigmaList) ):
+			eachTB = tbList[i]
+
+			eachSigma = sigmaList[i]
+
+			flux= self.getFluxCol(eachTB  )
+			minFlux=324*self.rms*0.2*eachSigma *2  # K km/s, the last 2 is the two channels
+
+			meanA,stdA=self.getAlphaWithMCMC(  flux ,  minArea= minFlux ,  maxArea=None , physicalArea=True )
+
+			alphaList.append(meanA)
+			errorList.append( stdA)
+
+		return  alphaList,  errorList
+
+
+
+
+
+
+
 	def drawAlpha(self,ax,tb8List,tb16List, label8, label16,sigmaListDen ): #
 
 
 		#fitting alpha and draw
 
-		alpha8List, alpha8ErrorList = self.getAlphaList(tb8List)
+		alpha8List, alpha8ErrorList = self.getAlphaList(tb16List)
 		#alpha16List, alpha16ErrorList = self.getAlphaList(tb16List)
 
 		#ax.plot(sigmaListDen,alpha8List,'o-',label="MinPix = 8",color="blue", markersize= 3, lw=1)
@@ -1929,7 +2061,7 @@ class myDBSCAN(object):
 
 			#dendroSigmaList=[2,2.5 , 3, 3.5, 4,4.5,5, 5.5, 6]
 
-			dendroSigmaList=[2,2.5 , 3, 3.5, 4,4.5,5, 5.5, 6,6.5 ]
+			dendroSigmaList=[2,2.5 , 3, 3.5, 4,4.5,5, 5.5, 6,6.5,7 ]
 
 			for sigmas in dendroSigmaList:
 				tbName8= "minV{}minP{}_dendroCatTrunk.fit".format(sigmas, 8)
@@ -2076,6 +2208,10 @@ class myDBSCAN(object):
 				dataCluster[cloudIndex] = 0
 
 				continue
+
+			#edge
+
+
 			emptyTB.add_row( eachDBRow  )
 		pbar.finish()
 		#save
@@ -2269,16 +2405,190 @@ class myDBSCAN(object):
 
 	def cleanAllDBfits(self):
 
-		# DbscanSigmaList= np.arange(2,6.5,0.5)
 		DbscanSigmaList = np.arange(2, 7.5, 0.5)
 
+
 		for sigmas in DbscanSigmaList:
+
 			for minPix in [8,16]:
 
 				tbName = "G2650CO12DBCatS{:.1f}P{}Con2.fit".format(sigmas, 8)
 				fitsName = "G2650CO12dbscanS{:.1f}P{}Con2.fits".format(sigmas, 8 )
 				self.clearnDBAssign( fitsName,tbName, pixN=minPix, minV=sigmas, minDelta= 3 )
 
+
+
+	def splitEdges(self,TB):
+		"""
+
+		:param TB:
+		:return: good sources , and edge sources
+
+		"""
+ 
+		processTB=TB
+
+		dbClusterTB=processTB
+		if "peak" in dbClusterTB.colnames: #for db scan table
+
+			select1=np.logical_and( processTB["x_cen"]<= 26.25 ,processTB["y_cen"] >= 3.25  )
+			select2=np.logical_and( processTB["x_cen"]>=49.25 ,processTB["y_cen"]>=  3.75 )
+			allSelect= np.logical_or( select1,select2 )
+
+			badSource=dbClusterTB[allSelect]
+
+			part1= processTB[ np.logical_or( processTB["x_cen"]>26.25 ,processTB["y_cen"] < 3.25  )   ] #1003, 3.25
+			part2= part1[ np.logical_or( part1["x_cen"]<49.25 ,part1["y_cen"]<  3.75 )   ] #1003, 3.25
+
+
+
+			return part2,badSource
+
+
+
+		else: #dendrogram tb
+
+
+			select1=np.logical_and( processTB["x_cen"]>= 2815 ,processTB["y_cen"] >= 1003  )
+			select2=np.logical_and( processTB["x_cen"]<=  55 ,processTB["y_cen"]>= 1063  )
+			allSelect= np.logical_or( select1,select2 )
+
+
+			badSource=dbClusterTB[allSelect]
+			part1= processTB[ np.logical_or( processTB["x_cen"]< 2815 ,processTB["y_cen"] < 1003  )   ] #1003, 3.25
+			part2= part1[ np.logical_or( part1["x_cen"]>  55 ,part1["y_cen"]< 1063  )   ] #1003, 3.25
+
+
+
+			return part2,badSource
+
+
+		#used to remove edge sources, and
+
+
+
+
+	def produceMask(self, COFITS, LabelFITS ,labelTB, region=""):
+
+		#mask pixels that have been not ben labeled by other
+
+		dataCluster, headCluster = myFITS.readFITS(LabelFITS)
+
+		dataCO, headCO = myFITS.readFITS( COFITS )
+		rmsData,rmsHead=myFITS.readFITS( "/home/qzyan/WORK/myDownloads/testScimes/RMS_G2650CO12.fits" )
+
+
+		dbClusterTB=Table.read( labelTB )
+
+		saveFITS=region+"MaskedCO.fits"
+		minV= np.nanmin(dataCluster)
+		print "The noise is maked with ",minV
+
+		coGood=  dataCluster>minV
+
+
+		clusterIndex1D= np.where( dataCluster>minV )
+		clusterValue1D=  dataCluster[clusterIndex1D ]
+
+		Z0,Y0,X0 = clusterIndex1D
+
+
+
+		dataCO[ ~coGood ]=0#including nan
+
+
+		#getedigeTBlist
+		processTB=dbClusterTB
+		
+		goodSource,badSource=self.splitEdges( processTB )
+
+
+		for eachBadC in badSource:
+
+			badID=eachBadC["_idx"]
+			cloudIndex = self.getIndices(Z0, Y0, X0, clusterValue1D, badID)
+			
+			dataCO[ cloudIndex ]=0
+
+
+
+
+		fits.writeto(saveFITS,dataCO, header=headCO,   overwrite = True )
+
+	def getDiffCO(self,maskedFITS,labelFITS, cutoff=3, ):
+
+
+		dataCluster, headCluster = myFITS.readFITS(labelFITS)
+
+		dataCO, headCO = myFITS.readFITS( maskedFITS )
+
+		minV= np.nanmin(dataCluster)
+
+		dataCO[dataCO<cutoff*self.rms]=0
+
+		dataCO[dataCluster> minV]=0
+
+		fits.writeto( "DiffTest.fits" , dataCO, header=headCluster,overwrite=True   )
+
+
+	def extendAllScimes(self  ): #only extend,no others
+		"""
+		Extend the scimes Asgncube
+		:return:
+		"""
+		#the SCIMES assign cubes stars from -1
+		#scimesPath="./scimesG2650/"
+		#minV=-1
+		G2650MaskCO = "G2650CO12MaskedCO.fits"
+		scimesPath="/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/"
+		dendroSigmaList = [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7]
+
+		for eachSigma  in dendroSigmaList :
+			for eachPix in [8, 16]:
+				scimesAsgnFITS=scimesPath+"ClusterAsgn_{}_{}Ve20.fits".format( eachSigma ,eachPix )
+
+				if os.path.isfile( scimesAsgnFITS):
+
+					saveName="ClusterAsgn_{}_{}Ve20_extend.fits".format( eachSigma ,eachPix )
+					self.myDilation(scimesAsgnFITS, None,startSigma=15, saveName=saveName, endSigma=eachSigma,maskCOFITS=G2650MaskCO ,savePath= scimesPath)
+
+
+	def testFluxOfUM(self):
+
+		UMfitsDB="./ursaMajor/UMCO12dbscanS2P16Con2.fits"
+		dataDB,headDB=myFITS.readFITS(UMfitsDB)
+		UMCO= "/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/myCut12CO.fits"
+		dataCO, headCO =myFITS.readFITS( UMCO )
+
+
+		dbMask= dataDB>0
+		dataCO[~dbMask]=0
+
+		fluxList=[]
+		sigmaList=np.arange(2,8,0.5)
+		for sigmas in sigmaList:
+			print sigmas
+			dataCO[dataCO<sigmas*self.rms]=0
+
+			totalFlux=np.sum(dataCO )
+			fluxList.append( totalFlux*0.16)
+
+		#plot
+		fig=plt.figure(figsize=(10, 8))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		#############   plot dendrogram
+		axUM=fig.add_subplot(1,1,1)
+
+		axUM.plot(sigmaList, fluxList, 'o--' ,linestyle=':', color="blue", lw=1.5 )
+
+
+		axUM.set_ylabel(r"Total flux ($\rm K\ km\ s$$^{-1}$ $\Omega_\mathrm{pixel}$)")
+		axUM.set_xlabel(r"CO cutoff ($\sigma$)")
+
+		plt.savefig( "ursaMajorFlux.pdf"  ,  bbox_inches='tight')
+		plt.savefig( "ursaMajorFlux.png"  ,  bbox_inches='tight', dpi=300)
 
 
 
@@ -2300,29 +2610,46 @@ G210CO12="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO12sm.fits"
 G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
 
 ursaMajor=""
-
+G2650MaskCO = "G2650CO12MaskedCO.fits"
 #veloicty distance, relation
 # 13.46359868  4.24787753
 
-if 0:
 
-	doDBSCAN.getCatFromLabelArray( G2650CO12FITS, "G2650CO12dbscanS3.0P8Con2.fits", doDBSCAN.TBModel, minPix=8, rms=3, saveMarker="testNanValue" )
-
-	sys.exit()
-
-if 0:
-
-
-	doDBSCAN.totaFluxDistribution()
-
-
-	#doDBSCAN.fluxDistribution()
-
-	#doDBSCAN.alphaDistribution()
-
-	#doDBSCAN.areaDistribution()
+if 1: #compare distributions
 	#doDBSCAN.numberDistribution()
 
+	doDBSCAN.totaFluxDistribution() # add
+	#doDBSCAN.fluxDistribution()
+	#doDBSCAN.fluxAlphaDistribution()
+
+	#doDBSCAN.alphaDistribution()
+	#doDBSCAN.areaDistribution()
+
+
+	sys.exit()
+
+
+
+
+if 0:#Scimes pipe line
+
+	doDBSCAN.extendAllScimes()
+	sys.exit()
+
+
+
+
+if 0: #high Galacticlatitudes, ursa major
+	doDBSCAN.rms=0.16
+	coFITS12UM="/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/myCut12CO.fits"
+	COData,COHead=myFITS.readFITS( coFITS12UM)
+	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=2, min_pix=16, connectivity=2, region="UMCO12",savePath="./ursaMajor/")
+
+	doDBSCAN.testFluxOfUM(  )
+
+	#doDBSCAN.getCatFromLabelArray(coFITS12UM,"UMCO12dbscanS2P8Con2.fits",doDBSCAN.TBModel,saveMarker="UMCO12_2_8")
+	#doDBSCAN.drawAreaDistribute("UMCO12_2_8.fit" , region="Taurus" )
+
 	sys.exit()
 
 
@@ -2331,9 +2658,26 @@ if 0:
 
 
 
-if 1: #DBSCAN PipeLine
 
-	if 1: #produce all DBSCAN cases
+if 0: #produce new mask
+		maskCO="G2650CO12MaskedCO.fits"
+		#doDBSCAN.computeDBSCAN(COData, COHead, min_sigma=2, min_pix=8, connectivity=2, region="G2650CO12Mask")
+
+		doDBSCAN.produceMask( G2650CO12FITS, "G2650CO12dbscanS2.0P8Con2.fits", "G2650CO12DBCatS2.0P8Con2.fit",  region="G2650CO12")
+		#doDBSCAN.getDiffCO("G2650CO12MaskedCO.fits","minV4minP16_TrunkAsign.fits",cutoff=4)
+
+
+		sys.exit()
+
+
+
+
+
+
+
+if 0: #DBSCAN PipeLine
+
+	if 0: #produce all DBSCAN cases step1
 		COData, COHead = myFITS.readFITS(G2650CO12FITS)
 
 		DbscanSigmaList = np.arange(2, 7.5, 0.5)
@@ -2341,21 +2685,43 @@ if 1: #DBSCAN PipeLine
 			print "Calculating ",sigmas
 			doDBSCAN.computeDBSCAN(  COData,COHead, min_sigma=sigmas, min_pix=8, connectivity=2, region="G2650CO12")
 
+	if 0: #step2, calculate all catalog
+		DbscanSigmaList = np.arange(2, 7.5, 0.5)
+		for sigmas in DbscanSigmaList:
+			labelFITS="G2650CO12dbscanS{}P8Con2.fits".format( sigmas )
+			savename="G2650CO12DBCatS{}P{}Con2".format(sigmas,8)
+
+			doDBSCAN.getCatFromLabelArray( G2650CO12FITS,  labelFITS  ,  doDBSCAN.TBModel, minPix=8, rms=sigmas, saveMarker= savename )
+
+
+
 
 	if 0:
-		for i in np.arange(2 ,8,0.5):
-			savename="G2650CO12DBCatS{}P{}Con2".format(i,8)
-			doDBSCAN.getCatFromLabelArray(G2650CO12FITS,"G2650CO12dbscanS{}P8Con2.fits".format(i),doDBSCAN.TBModel,saveMarker=savename)
 
-
-
-
-
-	#clean
-
-	#doDBSCAN.cleanAllDBfits()
+		doDBSCAN.cleanAllDBfits()
 	sys.exit()
 
+
+if 1:#distance pipeline
+
+	#step1, extend 3,sigma,1000 pixels, to 2 sigma
+	if 0: # use masked fits, a cutoff to
+		dendroLabel= "ClusterAsgn_3_1000Ve20.fits"
+		extendedLabel="G2650DisCloudVe20_extend.fits"
+
+		doDBSCAN.myDilation( dendroLabel, G2650CO12FITS, startSigma=10,endSigma=2, saveName="G2650DisCloudVe20",maskCOFITS= G2650MaskCO )
+
+
+
+	if 1: # get catalog
+		dendro1000ExtendFITS = "G2650DisCloudVe20_extend.fits"
+		savename="G2650CloudForDisCatDendro1000"
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS, dendro1000ExtendFITS, doDBSCAN.TBModel, minPix=1000, rms=3, saveMarker=savename)
+
+
+	if 0:
+		pass
+		#then produce int figures, usemyScimes.py
 
 if 0:
 	doDBSCAN.drawCloudMap(drawChannel= 50 )
@@ -2366,18 +2732,6 @@ if 0:
 	sys.exit()
 
 
-
-
-if 0: #high Galacticlatitudes, ursa major
-	doDBSCAN.rms=0.16
-	coFITS12UM="/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/myCut12CO.fits"
-	COData,COHead=myFITS.readFITS( coFITS12UM)
-	#doDBSCAN.computeDBSCAN(COData,COHead, min_sigma=2, min_pix=8, connectivity=2, region="UMCO12")
-
-	#doDBSCAN.getCatFromLabelArray(coFITS12UM,"UMCO12dbscanS2P8Con2.fits",doDBSCAN.TBModel,saveMarker="UMCO12_2_8")
-	doDBSCAN.drawAreaDistribute("UMCO12_2_8.fit" , region="Taurus" )
-
-	sys.exit()
 
 
 
