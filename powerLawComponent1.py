@@ -75,6 +75,7 @@ class powerLaw1:
                 sampleAlpha.append(newAlpha1)
 
 
+
             else:
                 sampleAlpha.append(sampleAlpha[-1])
 

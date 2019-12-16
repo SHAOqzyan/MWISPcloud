@@ -135,17 +135,12 @@ class MWcloud:
 		data=hdu.data
 		head=hdu.header
 
-		data0=np.zeros_like(data)
-
-
-		print d[1]
+		data0=np.zeros_like(data)-1
 
 
 		for eachT in  d.trunk:
 
-
-
-			tID =   eachT.idx+1
+			tID =   eachT.idx
 			#print eachT.parent
 
 			tMask=eachT.get_mask().astype("short")
@@ -369,8 +364,28 @@ class MWcloud:
 doCloud=MWcloud()
 
 
+if 1:#reproduce trunk assign
 
-if 1:
+	for sigmas in [7, 2,2.5,3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5  ]:
+		for pixN in [8,16]:
+
+			COFITS="G2650Local30.fits"
+
+			dendroFITS="minV{}minP{}_dendro.fits".format(sigmas,pixN)
+			dendroCat= "minV{}minP{}_dendroCat.fit".format(sigmas,pixN)
+
+			Table.read(dendroCat)
+
+			d=Dendrogram.load_from( dendroFITS )
+			saveName="G2650"
+			saveMark=saveName+"minV{}minP{}".format(sigmas,pixN)
+			trunkFITS=  saveMark + "_TrunkAsign.fits"
+			doCloud.produceAssignFITS(d,COFITS,trunkFITS)
+			#doCloud.doSCIMES(COFITS,dendroFITS,dendroCat,    "{}_{}Ve20".format(sigmas,pixN) , inputD=d ,criteriaUsed=[doCloud.myVrms],scales=[20] )
+
+
+
+if 0:
 	for sigmas in [ 3.5, 4, 4.5, 5, 5.5, 6]:
 		for pixN in [8,16]:
 
