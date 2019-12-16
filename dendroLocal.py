@@ -135,12 +135,12 @@ class MWcloud:
 		data=hdu.data
 		head=hdu.header
 
-		data0=np.zeros_like(data)-1
+		data0=np.zeros_like(data)
 
 
 		for eachT in  d.trunk:
 
-			tID =   eachT.idx
+			tID =   eachT.idx+1
 			#print eachT.parent
 
 			tMask=eachT.get_mask().astype("short")
@@ -148,7 +148,7 @@ class MWcloud:
 			data0= data0 + tMask*tID
 
 
-		fits.writeto(saveFITS, data0, header=head,  overwrite=True  )
+		fits.writeto(saveFITS, data0-1, header=head,  overwrite=True  )
 
 
 
