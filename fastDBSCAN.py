@@ -46,7 +46,9 @@ class myDBSCAN(object):
 	rms = 0.5
 	TBModel="minV3minP16_dendroCatTrunk.fit"
 
-	def __index__(self):
+	tmpPath="./tmpFiles/"
+
+	def __init__(self):
 		pass
 
 	def sumEdgeByCon1(self,extendMask): #7 in total
@@ -143,7 +145,7 @@ class myDBSCAN(object):
 
 
 
-	def computeDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=16, connectivity=2 ,region="" , getMask=False,savePath="" ):
+	def computeDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=16, connectivity=2 ,region="" , getMask=False,savePath="" ,mimicDendro=False):
 		"""
 		min_pix the the minimum adjacen number for are core point
 		:param COdata:
@@ -183,11 +185,10 @@ class myDBSCAN(object):
 		coreArray=coreArray+0
 
 		labeled_core, num_features=label(coreArray,structure=s) #first label core, then expand, otherwise, the expanding would wrongly connected
+
 		selectExpand= np.logical_and(labeled_core==0,  goodValues   )
 		#expand labeled_core
 		#coreLabelCopy=labeled_core.copy()
-
-
 
 		expandTry = dilation(labeled_core , s  ) # first try to expand, then only keep those region that are not occupied previously
 		#it is possible  that a molecular cloud may have less pixN than 8, because of the closeness of two
@@ -195,6 +196,13 @@ class myDBSCAN(object):
 		labeled_core[  selectExpand  ] =  expandTry[ selectExpand  ]
 
 		labeled_array = labeled_core
+
+		if mimicDendro:
+			print "Mimicing dendrogram.."
+			extendedArray=labeled_array>0
+			extendedArray=extendedArray+0
+			labeled_array, num_features = label(extendedArray, structure=s)
+
 		saveName="{}dbscanS{}P{}Con{}.fits".format( region,min_sigma,min_pix,connectivity )
 
 		if getMask:
@@ -366,9 +374,7 @@ class myDBSCAN(object):
 		minV=np.nanmin(dataCluster)
 		wcsCloud=WCS( headCluster )
 
-		minValue=np.min(dataCluster )
-
-		clusterIndex1D= np.where( dataCluster>minValue )
+		clusterIndex1D= np.where( dataCluster>minV )
 		clusterValue1D=  dataCluster[clusterIndex1D ]
 
 		Z0,Y0,X0 = clusterIndex1D
@@ -381,7 +387,7 @@ class myDBSCAN(object):
 
 		newTB["pixN"]=newTB["v_rms"]
 		newTB["peak"]=newTB["v_rms"]
-
+		newTB["peak2"]=newTB["v_rms"]  #the second largest peak
 		dataClusterNew=np.zeros_like( dataCluster)
 
 		# in the newCluster, number stars from 1, not zero
@@ -434,11 +440,14 @@ class myDBSCAN(object):
 
 			coValues=  dataCO[ cloudIndex ]
 
-			peak=np.max( coValues)
 
+			sortedCO=np.sort(coValues)
+			peak = sortedCO[-1] #np.max( coValues)
+			peak2=sortedCO[-2]
 			cloudV=cloudIndex[0]
 			cloudB=cloudIndex[1]
 			cloudL=cloudIndex[2]
+
 
 
 			sumCO=np.sum( coValues )
@@ -460,6 +469,7 @@ class myDBSCAN(object):
 			#save values
 			newRow["pixN"]= pixN
 			newRow["peak"]= peak
+			newRow["peak2"]= peak2
 
 			newRow["sum"]= sumCO
 			newRow["area_exact"]= area_exact
@@ -509,8 +519,8 @@ class myDBSCAN(object):
 		return fluxRow/factorSumToFlux
 
 
-	def getIndices(self,Z0,Y0,X0,values1D,choseID):
 
+	def getIndices(self,Z0,Y0,X0,values1D,choseID):
 
 
 		cloudIndices = np.where(values1D==choseID )
@@ -521,6 +531,19 @@ class myDBSCAN(object):
 
 		return tuple( [ cZ0, cY0, cX0 ]  )
 
+
+
+	def getIndices2D(self, Y0,X0,values1D,choseID):
+
+
+
+		cloudIndices = np.where(values1D==choseID )
+
+		cX0=X0[cloudIndices ]
+		cY0=Y0[cloudIndices ]
+
+
+		return tuple( [   cY0, cX0 ]  )
 
 
 
@@ -572,7 +595,7 @@ class myDBSCAN(object):
 
 
 		axArea.set_xlabel(r"Area (deg$^2$)")
-		axArea.set_ylabel(r"Bin number of trunks ")
+		axArea.set_ylabel(r"Number of trunks")
 
 
 		plt.savefig( "compareDendroParaDBMask.pdf" ,  bbox_inches='tight')
@@ -756,13 +779,13 @@ class myDBSCAN(object):
 		plt.savefig( "dbscanNumber.png" ,  bbox_inches='tight',dpi=300)
 
 	def getRealArea(self,TB):
-		print TB.colnames
+		#print TB.colnames
 		araeList=[]
 
 		#print TB.colnames
 		for eachR in TB:
 			v = eachR["v_cen"]
-			dis= (v- 4.24787753)/13.46359868*1000 # pc
+			dis= ( 0.037*v + 0.0249)*1000 # pc
 
 			if dis<0  or dis> 1500 :
 				continue
@@ -771,13 +794,11 @@ class myDBSCAN(object):
 
 
 			#print N,eachR["pixN"]
-			length= dis*np.deg2rad(0.5/60) # 0.0001454441043328608
+			length= dis*np.deg2rad(0.5/60) # square pc
 			trueArea=length**2*N #eachR["pixN"]  #*10000
 			#print N,  trueArea
 
 			araeList.append(  trueArea )
-
-
 
 		return np.asarray(araeList)
 
@@ -1301,14 +1322,15 @@ class myDBSCAN(object):
 	def getTotalFluxList(self,TBList):
 
 		fluxlist=[]
+		omega =1  # np.deg2rad(0.5 / 60) * np.deg2rad(0.5 / 60) / 4. / np.log(2)
 
 		for eachTB in TBList:
 
 			if "sum" in eachTB.colnames:
-				toalFlux=np.nansum( eachTB["sum"]  )*0.2 # K km/s
+				toalFlux=np.nansum( eachTB["sum"]  )*0.2*omega # K km/s
 
 			else:
-				toalFlux=np.nansum( eachTB["flux"]  )*0.2/self.getSumToFluxFactor() # K km/s
+				toalFlux=np.nansum( eachTB["flux"]  )*0.2/self.getSumToFluxFactor()*omega # K km/s
 
 			fluxlist.append(  toalFlux  )
 		return fluxlist
@@ -1528,10 +1550,10 @@ class myDBSCAN(object):
 
 		self.drawFlux(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
 
-		strXlabel=  r"Flux ($\rm K\ km\ s$$^{-1}$ $\Omega_{\rm pixel}$)"
+		strXlabel=  r"Flux ($\rm K\ km\ s$$^{-1}$ $\Omega_{\rm A}$)"
 
 		axDendro.set_xlabel( strXlabel )
-		axDendro.set_ylabel(r"Bin number of trunks ")
+		axDendro.set_ylabel(r"Number of trunks")
 
 		plt.xticks( [2,3,4,5,6,7],["2 (1.0 K)", "3 (1.5 K)" , "4 (2.0 K)" , "5 (2.5 K)" , "6 (3.0 K)" , "7 (3.5 K)"    ] )
 
@@ -1561,6 +1583,7 @@ class myDBSCAN(object):
 
 		axDB.legend(loc=1, ncol=2 )
 
+		axDB.set_ylabel(r"Number of trunks")
 
 
 
@@ -1584,6 +1607,7 @@ class myDBSCAN(object):
 
 		axSCI.legend(loc=1, ncol=2 )
 
+		axSCI.set_ylabel(r"Number of clusters")
 
 
 
@@ -1632,8 +1656,8 @@ class myDBSCAN(object):
 
 		self.drawArea(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
 
-		axDendro.set_xlabel(r"Area (deg$^2$)")
-		axDendro.set_ylabel(r"Bin number of trunks ")
+		axDendro.set_xlabel(r"Angular area (deg$^2$)")
+		axDendro.set_ylabel(r"Number of trunks")
 
 
 		axDendro.set_yscale('log')
@@ -1657,8 +1681,9 @@ class myDBSCAN(object):
 		at = AnchoredText(algDB, loc=3, frameon=False)
 		axDB.add_artist(at)
 		axDB.plot( [compoleteArea,compoleteArea],[2,2000],'--',color='black', lw=1  )
-		axDB.set_xlabel(r"Area (deg$^2$)")
+		axDB.set_xlabel(r"Angular area (deg$^2$)")
 		#axDB.set_ylabel(r"Bin number of trunks ")
+		axDB.set_ylabel(r"Number of trunks")
 
 		axDB.set_yscale('log')
 		axDB.set_xscale('log')
@@ -1675,8 +1700,9 @@ class myDBSCAN(object):
 		at = AnchoredText(algSCI, loc=3, frameon=False)
 		axSCI.add_artist(at)
 		axSCI.plot( [compoleteArea,compoleteArea],[2,2000],'--',color='black', lw=1  )
-		axSCI.set_xlabel(r"Area (deg$^2$)")
+		axSCI.set_xlabel(r"Angular area (deg$^2$)")
 		#axSCI.set_ylabel(r"Bin number of trunks ")
+		axSCI.set_ylabel(r"Number of clusters")
 
 		axSCI.set_yscale('log')
 		axSCI.set_xscale('log')
@@ -1734,7 +1760,7 @@ class myDBSCAN(object):
 		axDendro.plot(sigmaListDen,fluxList16Den,'D-' , color="green",markersize=4, lw=1.0,label="Total flux (dendrogram)" )
 
 
-		axDendro.set_ylabel(r"Total flux ($\rm K\ km\ s$$^{-1}$ $\Omega_\mathrm{pixel}$)")
+		axDendro.set_ylabel(r"Total flux ($\rm K\ km\ s$$^{-1}$ $\Omega_\mathrm{A}$)")
 		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
 
 
@@ -1758,11 +1784,11 @@ class myDBSCAN(object):
 		maskCO,_=myFITS.readFITS("G2650CO12MaskedCO.fits")
 		totalFluxList=[]
 
-
+		omega = 1 #np.deg2rad(0.5 / 60) * np.deg2rad(0.5 / 60) / 4. / np.log(2)
 
 		for eachS in sigmaListDen:
 			maskCO[maskCO<eachS*self.rms]=0
-			sumCO= np.sum( maskCO)*0.2
+			sumCO= np.sum( maskCO)*0.2* omega
 			totalFluxList.append( sumCO )
 
 		totalFluxRatioDendro=np.asarray( fluxList16Den ) /np.asarray( totalFluxList  )
@@ -1776,10 +1802,11 @@ class myDBSCAN(object):
 		z=np.polyfit(sigmaListDB, totalFluxList ,1 )
 
 		p=np.poly1d(  z )
+		print z
+		print p(0.0)/p(3), p(0.0)/p(2)
+		print p(3)/p(0), p(2)/p(0)
 
-		#print p(0.01)
-
-		axDendro.plot(sigmaListDB, p( sigmaListDB )  ,'r-' ,   color="red",markersize=3, lw=1.0,label= "Total flux(cutoff mask)", markerfacecolor='none' )
+		#axDendro.plot(sigmaListDB, p( sigmaListDB )  ,'r-' ,   color="red",markersize=3, lw=1.0,label= "Total flux(cutoff mask)", markerfacecolor='none' )
 
 
 		axRatio = axDendro.twinx()  # instantiate a second axes that shares the same x-axis
@@ -1846,7 +1873,7 @@ class myDBSCAN(object):
 
 		fig=plt.figure(figsize=(18,6))
 		rc('text', usetex=True )
-		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+		rc('font', **{'family': 'sans-serif',  'size'   : 14.5,  'serif': ['Helvetica'] })
 
 		#plot dendrogram
 		axDendro=fig.add_subplot(1,3,1)
@@ -1869,6 +1896,7 @@ class myDBSCAN(object):
 		#axDB.set_ylabel(r"Total number of clusters")
 
 		axDB.set_xlabel(r"CO cutoff ($\sigma$)")
+		axDB.set_ylabel(r"Total number of trunks")
 
 		axDB.legend(loc=2)
 		plt.xticks( [2,3,4,5,6,7],["2 (1.0 K)", "3 (1.5 K)" , "4 (2.0 K)" , "5 (2.5 K)" , "6 (3.0 K)" , "7 (3.5 K)"    ] )
@@ -1884,6 +1912,7 @@ class myDBSCAN(object):
 		#axSCI.set_ylabel(r"Total number of clusters")
 
 		axSCI.set_xlabel(r"CO cutoff ($\sigma$)")
+		axSCI.set_ylabel(r"Total number of clusters")
 
 		axSCI.legend(loc=3)
 
@@ -1931,13 +1960,13 @@ class myDBSCAN(object):
 	def drawArea(self,ax,tb8List,tb16List, label8,label16, sigmaListDen ):
 
 
-
 		areaEdges=np.linspace(0.25/3600.,150,10000)
 		areaCenter=self.getEdgeCenter( areaEdges )
 
 
-		NUM_COLORS = 14
+		NUM_COLORS = 12
 		clrs = sns.color_palette('husl', n_colors=NUM_COLORS)  # a list of RGB tuples
+
 
 
 		for i in range( len(tb8List) ):
@@ -1953,7 +1982,29 @@ class myDBSCAN(object):
 			ax.plot( areaCenter[binN16>0],binN16[binN16>0], '^--'   , markersize=1, lw=0.8,label=label16[i] ,alpha= 0.5,color=clrs[i] )
 
 
+	def drawPhysicalAreaSingle(self, ax, tbDendro2, physicalEdges, physicalCenter,completeArea,  label=None ):
 
+		# physicalEdges  physicalCenter
+		#areaEdges=np.linspace(0,100,1000)
+		#areaCenter=self.getEdgeCenter( areaEdges )
+
+		realArea=self.getRealArea(tbDendro2)
+		binN,binEdges=np.histogram( realArea , bins=physicalEdges )
+
+		#calculate alpha
+
+		meanA, stdA = self.getAlphaWithMCMC(realArea, minArea=completeArea, maxArea=None, physicalArea=True)
+
+		if label!=None:
+			label=label+r": $\alpha={:.2f}\pm{:.2f}$".format(meanA,stdA)
+
+		stepa=ax.plot(physicalCenter[binN > 0], binN[binN > 0], 'o-', markersize=1, lw=0.8, label=label, alpha=0.5 )
+
+
+
+		return stepa[-1].get_color()
+	
+	
 	def drawNumber(self,ax,tb8List,tb16List,label8,label16,sigmaListDen ):
 		Nlist8Den=self.getNList(tb8List)
 		Nlist16Den=self.getNList(tb16List)
@@ -1961,7 +2012,6 @@ class myDBSCAN(object):
 
 		ax.plot(sigmaListDen,Nlist8Den,'o-',label="min\_nPix = 8",color="blue",lw=1 , markersize=3 )
 		ax.plot(sigmaListDen,Nlist16Den,'o-',label="min\_nPix = 16",color="green", lw=1, markersize=3 )
-
 
 
 
@@ -2353,11 +2403,11 @@ class myDBSCAN(object):
 
 		self.setMinVandPeak(dbFITS,COFITS, peakSigma=minDelta+minV,minP=minP)
 
-	def clearnDBAssign(self,DBLabelFITS,DBTableFile	,pixN=8,minDelta=3,minV=2  ):
+	def clearnDBAssign(self,DBLabelFITS,DBTableFile	,pixN=8,minDelta=3,minV=2 ,prefix="" ):
 
 		minPeak=(minV+minDelta)*self.rms
-		saveName="DBCLEAN{}_{}Label.fits".format( minV, pixN )
-		saveNameTB="DBCLEAN{}_{}TB.fit".format( minV, pixN )
+		saveName=prefix+"DBCLEAN{}_{}Label.fits".format( minV, pixN )
+		saveNameTB=prefix+"DBCLEAN{}_{}TB.fit".format( minV, pixN )
 
 		DBTable=Table.read( DBTableFile )
 
@@ -2370,6 +2420,7 @@ class myDBSCAN(object):
 		#cloudIndex = self.getIndices(Z0, Y0, X0, clusterValue1D, newID)
 
 		emptyTB= Table( DBTable[0] )
+		emptyTB.remove_row(0)
 		print "Cleaning DBSCAN table..."
 
 		widgets = ['Recalculating cloud parameters: ', Percentage(), ' ', Bar(marker='0',left='[',right=']'),  ' ', ETA(), ' ', FileTransferSpeed()] #see docs for other options
@@ -2411,16 +2462,18 @@ class myDBSCAN(object):
 		tmpFITS="checkCloudTmp.fits"
 
 		tmpData, tmpHead = myFITS.readFITS(rawFITSFile)
-		save2D=vtmpData[drawChannel]
-
-		doFITS.cropFITS2D()
+		save2D=tmpData[drawChannel]
 
 		fits.writeto(tmpFITS, save2D,header=tmpHead ,overwrite=True)
 
 
+		cropTMP = "checkCloudTmpCrop.fits"
+
+		doFITS.cropFITS2D(tmpFITS,cropTMP, Lrange=lRange, Brange=bRange , overWrite=True   )
 
 
-		return myFITS.readFITS(tmpFITS)
+
+		return myFITS.readFITS(cropTMP)
 
 
 	def drawCloudMap(self,drawChannel=98,lRange=None,bRange=None ):
@@ -2432,9 +2485,6 @@ class myDBSCAN(object):
 
 		draw 2sigma, because they would provide the smallest area of clouds,
 
-
-
-
 		:return:
 		"""
 
@@ -2443,21 +2493,20 @@ class myDBSCAN(object):
 
 		#first
 
-
-
 		#axCO.set_xlim( [1000, 1700] )
 		#axCO.set_ylim( [350, 950 ] )
 
 
-
-
 		COFITS="G2650Local30.fits"
 
-		data,head=myFITS.readFITS(COFITS)
+		#data,head=myFITS.readFITS(COFITS)
+
+		data,head=self.getCropDataAndHead(   COFITS,drawChannel=drawChannel,lRange=lRange,bRange= bRange )
+
 
 		WCSCO=WCS(head)
 
-		channelRawCO=data[drawChannel]
+		channelRawCO=data #[drawChannel]
 
 		DBLabelFITS = "DBCLEAN2.0_8Label.fits"
 		DBTableFile= "DBCLEAN2.0_8TB.fit"
@@ -2473,17 +2522,12 @@ class myDBSCAN(object):
 		drawDBSCANtb=self.removeWrongEdges(drawDBSCANtb)
 
 
-		drawDBSCANData,drawDBSCANHead = myFITS.readFITS(DBLabelFITS)
 
+		drawDBSCANData,drawDBSCANHead=self.getCropDataAndHead(   DBLabelFITS,drawChannel=drawChannel,lRange=lRange,bRange= bRange )
+		#drawDBSCANData,drawDBSCANHead = myFITS.readFITS(DBLabelFITS)
+		WCSCrop = WCS( drawDBSCANHead )
 
-
-
-
-		channelDBSCAN = drawDBSCANData[drawChannel]
-
-
-
-
+		channelDBSCAN =drawDBSCANData  #drawDBSCANData[drawChannel]
 
 
 
@@ -2496,17 +2540,27 @@ class myDBSCAN(object):
 		drawDENDROtb=self.removeWrongEdges(drawDENDROtb)
 
 
-		drawDENDROData,drawDENDROHead = myFITS.readFITS("minV2minP16_TrunkAsign.fits")
+		#drawDENDROData,drawDENDROHead = myFITS.readFITS("minV2minP16_TrunkAsign.fits")
+		#drawDENDROData=drawDENDROData-1
+		#channelDENDRO =  drawDENDROData[drawChannel]
 
-		channelDENDRO =  drawDENDROData[drawChannel]
+
+		drawDendrogram, drawDendrogramHead = self.getCropDataAndHead(   "minV2minP16_TrunkAsign.fits",drawChannel=drawChannel,lRange=lRange,bRange= bRange )
+
+
+		channelDENDRO=drawDendrogram-1
+
 
 		dendroClouds=np.unique(channelDENDRO)
 
-		
-		#scimes
-		drawSCIMESData, drawSCIMESHead = myFITS.readFITS("./scimesG2650/ClusterAsgn_2_8Ve20.fits")
-		channelSCIMES =  drawSCIMESData[drawChannel]
 
+
+		#scimes
+		#drawSCIMESData, drawSCIMESHead = myFITS.readFITS("./scimesG2650/ClusterAsgn_2_8Ve20.fits")
+		#channelSCIMES =  drawSCIMESData[drawChannel]
+
+		drawSCIMES, drawSCIMESHead =self.getCropDataAndHead(   "./scimesG2650/ClusterAsgn_2_16Ve20.fits", drawChannel=drawChannel,lRange=lRange,bRange= bRange )
+		channelSCIMES = drawSCIMES  #drawSCIMESData[drawChannel]
 
 		maximumArea= 144 *0.25 #arcmin^2
 
@@ -2515,14 +2569,15 @@ class myDBSCAN(object):
 
 
 
-		fig = plt.figure(1, figsize=(10,8) )
+		fig = plt.figure(1, figsize=(10, 8) )
 		rc('font', **{'family': 'sans-serif', 'serif': ['Helvetica']})
 		#rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
 
 		rc('text', usetex=True)
 
-		axCO= pywcsgrid2.subplot(221, header=   WCSCO  )
+		axCO= pywcsgrid2.subplot(221, header=   WCSCrop  )
 		axCO.imshow(channelRawCO,origin='lower',cmap="bone",vmin=0 ,vmax=3,interpolation='none')
+
 
 
 		#draw Dendrogram.............
@@ -2538,6 +2593,7 @@ class myDBSCAN(object):
 
 			else:
 				labelDendro = None
+
 
 
 			eachDRC=int(eachDRC)
@@ -2576,19 +2632,23 @@ class myDBSCAN(object):
 			if eachDBC==0:
 				continue
 
+
+
 			cRow=  drawDBSCANtb[drawDBSCANtb["_idx"]==eachDBC  ]
+
+
 
 			if len(cRow)==0: #may be edge sources
 				continue
 
 			area=cRow["area_exact"]
 
+
 			if area>maximumArea:
 				continue
 
 			else:
 				#draw
-
 
 				if np.isnan(cRow["x_cen"] ):
 					continue
@@ -2612,34 +2672,34 @@ class myDBSCAN(object):
 
 		axDBSCAN= pywcsgrid2.subplot(222, header=   WCSCO  ,sharex=axCO,sharey=axCO )
 
-		minV=np.nanmin(channelDBSCAN)
+		newLabels=self.showLabels(axDBSCAN, channelDBSCAN  )
 
-		channelDBSCAN= channelDBSCAN.astype(np.float)
-		channelDBSCAN[channelDBSCAN==minV]= np.NaN
-		axDBSCAN.imshow(channelDBSCAN,origin='lower',cmap=cmap ,      interpolation='none')
+		self.contourLabels(axDBSCAN, channelDBSCAN)
+
 
 		at = AnchoredText("DBSCAN", loc=1, frameon=False,prop={"color":"w"} )
 		axDBSCAN.add_artist(at)
 		#draw Dendrogram labels
 		axDendrogram= pywcsgrid2.subplot(223, header=   WCSCO ,sharex=axCO,sharey=axCO )
-		minV=np.nanmin(channelDENDRO)
 
-		channelDENDRO= channelDENDRO.astype(np.float)
-		channelDENDRO[channelDENDRO==minV]= np.NaN
 
-		axDendrogram.imshow(channelDENDRO,origin='lower',cmap=cmap,interpolation='none')
+		#draw dnedrogram contours
+		newLabels=self.showLabels(axDendrogram, channelDENDRO  )
+		self.contourLabels(axDendrogram, channelDENDRO)
+
+		#self.contourLabels(axDendrogram,newLabels )
+
+
 		at = AnchoredText("Dendrogram", loc=1, frameon=False,prop={"color":"w"} )
 		axDendrogram.add_artist(at)
 
 		#draw SCIMES
 
 		axSCIMES= pywcsgrid2.subplot(224, header=   WCSCO ,sharex=axCO,sharey=axCO )
-		minV=np.nanmin(channelSCIMES )
-		print "minV scimes",minV
-		channelSCIMES= channelSCIMES.astype(np.float)
-		channelSCIMES[channelSCIMES==minV]= np.NaN
 
-		axSCIMES.imshow(channelSCIMES,origin='lower',cmap=cmap,interpolation='none')
+		newLabels=self.showLabels(axSCIMES, channelSCIMES  )
+
+		self.contourLabels(axSCIMES,channelSCIMES )
 
 
 		at = AnchoredText("SCIMES", loc=1, frameon=False,prop={"color":"w"} )
@@ -2652,6 +2712,95 @@ class myDBSCAN(object):
 		plt.savefig("checkCloud.pdf", bbox_inches="tight")
 
 		plt.savefig("checkCloud.png", bbox_inches="tight",dpi=600)
+
+	def showLabels(self,ax,labelFITS2DArray):
+		"""
+		Use jet to show labels, and
+		:param ax:
+		:param labelFITS2DArray:
+		:return:
+		"""
+
+		labelFITS2DArray=np.nan_to_num(labelFITS2DArray)
+
+		minV=np.nanmin(labelFITS2DArray )
+		#labelFITS2DArray = labelFITS2DArray.astype(np.float)
+		#labelFITS2DArray[labelFITS2DArray==minV]= np.NaN # only float is allowed to have NaN values
+
+		cmap = plt.cm.jet
+		cmap.set_bad('black', 1. )
+
+		dbClouds = np.unique( labelFITS2DArray )
+		newLabels = np.arange( len(dbClouds) )
+
+		np.random.shuffle(newLabels)
+
+		#reassign fits
+
+		newChannelMap = labelFITS2DArray.copy()
+
+
+		#
+		index1D=np.where(labelFITS2DArray > minV)
+		values1D=labelFITS2DArray[index1D]
+
+		Y0, X0 = index1D
+
+
+
+		for i in np.arange(len(dbClouds)):
+
+			oldID = dbClouds[i]
+			newID= newLabels[i]
+
+			if oldID==minV:
+				continue
+
+			indicesL=self.getIndices2D(Y0,X0,values1D,oldID)
+
+			newChannelMap[  indicesL  ] = newID
+
+		newChannelMap = newChannelMap.astype(np.float)
+		newChannelMap[   labelFITS2DArray == minV   ] = np.NaN
+
+
+		ax.imshow(newChannelMap,origin='lower',cmap=cmap, vmin=0,vmax=len(newLabels),  interpolation='none')
+
+
+		return newChannelMap
+
+
+
+
+
+
+	def contourLabels(self,ax ,  labelFITS2DArray ):
+		"""
+
+		:param ax:
+		:param labelFITS2D:
+		:return:
+		"""
+
+		dbClouds=np.unique( labelFITS2DArray )
+
+		noiseV=np.min( dbClouds)
+
+		for eachDendroC in dbClouds:
+			#pass
+			if eachDendroC == noiseV:
+				continue
+
+			cloudIndex= labelFITS2DArray == eachDendroC
+			cloudIndex=cloudIndex.astype(int)
+
+
+			ax.contour(cloudIndex, colors="white", linewidths=0.2, origin="lower", levels=[1] )
+
+
+
+
+
 
 
 	def getLVFITSByDBMASK(self,DBlabel,CO12FITS,PVHeadTempFITS):
@@ -2704,7 +2853,6 @@ class myDBSCAN(object):
 
 			part1= processTB[ np.logical_or( processTB["x_cen"]>26.25 ,processTB["y_cen"] < 3.25  )   ] #1003, 3.25
 			part2= part1[ np.logical_or( part1["x_cen"]<49.25 ,part1["y_cen"]<  3.75 )   ] #1003, 3.25
-
 
 
 			return part2,badSource
@@ -2850,7 +2998,7 @@ class myDBSCAN(object):
 		axUM.plot(sigmaList, fluxList, 'o--' ,linestyle=':', color="blue", lw=1.5 )
 
 
-		axUM.set_ylabel(r"Total flux ($\rm K\ km\ s$$^{-1}$ $\Omega_\mathrm{pixel}$)")
+		axUM.set_ylabel(r"Total flux ($\rm K\ km\ s$$^{-1}$ $\Omega_\mathrm{A}$)")
 		axUM.set_xlabel(r"CO cutoff ($\sigma$)")
 
 		plt.savefig( "ursaMajorFlux.pdf"  ,  bbox_inches='tight')
@@ -2858,7 +3006,714 @@ class myDBSCAN(object):
 
 
 
-	def ZZ(self):
+	def drawVeDistribution(self):
+		"""
+		:return:
+		"""
+		####
+		#
+		#first check if the trunk assign of dendrogram is right
+
+
+		algDendro="Dendrogram"
+		tb8Den,tb16Den,label8Den,label16Den,sigmaListDen=self.getTBList(algorithm=algDendro)
+		tb8Den=self.removeAllEdges(tb8Den)
+		tb16Den=self.removeAllEdges(tb16Den)
+
+
+		algDB="DBSCAN"
+		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
+		tb8DB=self.removeAllEdges(tb8DB)
+		tb16DB=self.removeAllEdges(tb16DB)
+
+		algSCI="SCIMES"
+		tb8SCI,tb16SCI,label8SCI,label16SCI,sigmaListSCI=self.getTBList(algorithm= algSCI )
+		tb8SCI=self.removeAllEdges(tb8SCI)
+		tb16SCI=self.removeAllEdges(tb16SCI)
+
+		velEdges = np.linspace(0,7,250)
+		areaCenter = self.getEdgeCenter( velEdges )
+
+
+		fig=plt.figure(figsize=(16,5))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		#Dendrogram....
+		axDendro=fig.add_subplot(1,3,1)
+		color2 = self.drawVelTBSingle(axDendro, tb16Den[2] , velEdges ,areaCenter,label= label16Den[2]  )
+		color6 = self.drawVelTBSingle(axDendro,  tb16Den[6] , velEdges ,areaCenter,label= label16Den[6]   )
+		color10 = self.drawVelTBSingle(axDendro,  tb16Den[10] , velEdges ,areaCenter,label= label16Den[10]   )
+		l=axDendro.legend(loc=1)
+
+		colorsDendro=[color2, color6, color10 ]
+
+		for text,color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+
+
+
+
+		at = AnchoredText("Dendrogram", loc=4, frameon=False ,pad=1)
+		axDendro.add_artist(at)
+
+
+		axDendro.set_ylabel(r"Number of trunks")
+
+		axDendro.set_xlabel(r"Velocity dispersion $\sigma_V$ ($\rm km\ s$$^{-1}$)")
+
+		#DBSCAN........
+		axDBSCAN=fig.add_subplot(1,3,2,sharex=axDendro,sharey=axDendro)
+		color2=self.drawVelTBSingle(axDBSCAN, tb16DB[2] , velEdges ,areaCenter,label= label16DB[2]  )
+		color6=self.drawVelTBSingle(axDBSCAN,  tb16DB[6] , velEdges ,areaCenter,label= label16DB[6]   )
+		color10=self.drawVelTBSingle(axDBSCAN,  tb16DB[10] , velEdges ,areaCenter,label= label16DB[10]   )
+		l=axDBSCAN.legend(loc=1)
+ 
+		colorsDendro=[color2, color6, color10 ]
+
+		for text,color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+
+
+		at = AnchoredText("DBSCAN", loc=4, frameon=False,pad=1)
+		axDBSCAN.add_artist(at)
+		axDBSCAN.set_xlabel(r"Velocity dispersion $\sigma_V$ ($\rm km\ s$$^{-1}$)")
+		axDBSCAN.set_ylabel(r"Number of trunks")
+
+
+		##SCIMES
+
+		axSCIMES=fig.add_subplot(1,3,3,sharex=axDendro,sharey=axDendro)
+		color2=self.drawVelTBSingle(axSCIMES, tb16SCI[2] , velEdges ,areaCenter,label= label16SCI[2]  )
+		color6=self.drawVelTBSingle(axSCIMES,  tb16SCI[6] , velEdges ,areaCenter,label= label16SCI[6]   )
+		color10=self.drawVelTBSingle(axSCIMES,  tb16SCI[10] , velEdges ,areaCenter,label= label16SCI[10]   )
+		l=axSCIMES.legend(loc=1)
+		colorsDendro=[color2, color6, color10 ]
+
+		for text,color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+		at = AnchoredText("SCIMES", loc=4, frameon=False ,pad=1)
+		axSCIMES.add_artist(at)
+
+
+		axSCIMES.set_xlabel(r"Velocity dispersion $\sigma_V$ ($\rm km\ s$$^{-1}$)")
+
+		axSCIMES.set_ylabel(r"Number of clusters")
+
+
+		axSCIMES.set_xlim([0,4])
+
+
+		#axDBSCAN.set_xlabel(r"Velocity dispersion $\sigma_V$ ($\rm km\ s$$^{-1}$)")
+
+		fig.tight_layout()
+		plt.savefig( "velDistribute.pdf"  ,  bbox_inches='tight')
+		plt.savefig( "velDistribute.png"  ,  bbox_inches='tight', dpi=300)
+
+
+	def drawVelTBSingle(self,ax,testTB,velEdges,areaCenter,label=None):
+
+
+		#testTB=self.removeWrongEdges(testTB)
+		vDisperse = testTB["v_rms"]
+
+		maxV= np.max(vDisperse)
+		meanV= np.mean(vDisperse)
+		medianV= np.median(vDisperse)
+
+
+		binN8 , binEdges8 =np.histogram(vDisperse, bins=velEdges  )
+
+		peakV=areaCenter[ binN8.argmax() ]
+
+		suffix="\nPeak: {:.2f}, Mean: {:.2f}, Median: {:.2f}".format( peakV, meanV, medianV )
+
+
+		stepa=ax.step( areaCenter, binN8, lw=1.0 , label=label+suffix )
+
+
+
+
+
+		return stepa[-1].get_color()
+
+	def drawPeakTBSingle(self,ax,testTB,velEdges,areaCenter,label=None):
+
+		#testTB=self.removeWrongEdges(testTB)
+		vDisperse = testTB["peak"]
+
+		peakV= np.max(vDisperse)
+		meanV= np.mean(vDisperse)
+		medianV= np.median(vDisperse)
+
+		suffix="\nMean: {:.1f}, Median: {:.1f}".format(   meanV, medianV )
+
+		binN8 , binEdges8 =np.histogram(vDisperse, bins=velEdges  )
+		stepa = ax.step( areaCenter, binN8, lw=1.0 , label=label+suffix )
+		#ax.set_yscale('log')
+
+
+
+		return stepa[-1].get_color()
+
+	def drawPeakDistribution(self):
+		"""
+		:return:
+		"""
+		####
+
+		# first check if the trunk assign of dendrogram is right
+
+		algDendro="Dendrogram"
+		tb8Den,tb16Den,label8Den,label16Den,sigmaListDen=self.getTBList(algorithm=algDendro)
+		tb8Den=self.removeAllEdges(tb8Den)
+		tb16Den=self.removeAllEdges(tb16Den)
+
+
+		algDB="DBSCAN"
+		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
+		tb8DB=self.removeAllEdges(tb8DB)
+		tb16DB=self.removeAllEdges(tb16DB)
+
+		algSCI="SCIMES"
+		tb8SCI,tb16SCI,label8SCI,label16SCI,sigmaListSCI=self.getTBList(algorithm= algSCI )
+		tb8SCI=self.removeAllEdges(tb8SCI)
+		tb16SCI=self.removeAllEdges(tb16SCI)
+
+		velEdges = np.linspace(0,40,200)
+		areaCenter = self.getEdgeCenter( velEdges )
+
+
+		fig=plt.figure(figsize=(16,5))
+		rc('text', usetex=True )
+		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		#Dendrogram....
+		axDendro=fig.add_subplot(1,3,1)
+		#self.drawVelTBSingle(axDendro, tb16Den[2] , velEdges ,areaCenter,label= label16Den[2]  )
+		#self.drawVelTBSingle(axDendro,  tb16Den[6] , velEdges ,areaCenter,label= label16Den[6]   )
+		#self.drawVelTBSingle(axDendro,  tb16Den[10] , velEdges ,areaCenter,label= label16Den[10]   )
+
+		#to be modified
+		tbDendro2=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/Dendro_3_16Ve20ManualCat.fit")
+		tbDendro6=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/Dendro_5_16Ve20ManualCat.fit")
+		tbDendro10=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/Dendro_7_16Ve20ManualCat.fit")
+
+		tbDendro2, tbDendro6,tbDendro10 =self.removeAllEdges( [ tbDendro2, tbDendro6,tbDendro10 ] )
+
+
+
+		color2  = self.drawPeakTBSingle(axDendro,tbDendro2   , velEdges ,areaCenter,label= label16Den[2]  )
+		color6  = self.drawPeakTBSingle(axDendro,  tbDendro6 , velEdges ,areaCenter,label= label16Den[6]   )
+		color10 = self.drawPeakTBSingle(axDendro,  tbDendro10 , velEdges ,areaCenter,label= label16Den[10]   )
+
+
+		l=axDendro.legend(loc=1)
+		colorsDendro=[color2, color6, color10 ]
+		for text,color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+
+
+		at = AnchoredText("Dendrogram", loc=4, frameon=False,pad=1 )
+		axDendro.add_artist(at)
+
+
+		axDendro.set_ylabel(r"Number of trunks")
+
+		
+		axDendro.set_xlabel(r"Peak brightness temperature (K)")
+
+		#DBSCAN........
+		axDBSCAN=fig.add_subplot(1,3,2,sharex=axDendro,sharey=axDendro)
+		color2= self.drawPeakTBSingle(axDBSCAN, tb16DB[2] , velEdges ,areaCenter,label= label16DB[2]  )
+		color6= self.drawPeakTBSingle(axDBSCAN,  tb16DB[6] , velEdges ,areaCenter,label= label16DB[6]   )
+		color10= self.drawPeakTBSingle(axDBSCAN,  tb16DB[10] , velEdges ,areaCenter,label= label16DB[10]   )
+
+
+
+		l=axDBSCAN.legend(loc=1)
+		colorsDendro=[color2, color6, color10 ]
+		for text,color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+
+
+
+		at = AnchoredText("DBSCAN", loc=4, frameon=False, pad=1 )
+		axDBSCAN.add_artist(at)
+		#axDBSCAN.set_xlabel(r"Peak values (K)")
+		axDBSCAN.set_xlabel(r"Peak brightness temperature (K)")
+		axDBSCAN.set_ylabel(r"Number of trunks")
+
+		##SCIMES
+
+		axSCIMES=fig.add_subplot(1,3,3,sharex=axDendro,sharey=axDendro)
+
+		tbSCIMES2=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/ClusterAsgn_3_16Ve20ManualCat.fit")
+		tbSCIMES6=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/ClusterAsgn_5_16Ve20ManualCat.fit")
+		tbSCIMES10=Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/ClusterAsgn_7_16Ve20ManualCat.fit")
+
+		tbSCIMES2, tbSCIMES6,tbSCIMES10 =self.removeAllEdges( [ tbSCIMES2, tbSCIMES6,tbSCIMES10 ] )
+
+
+
+		color2=self.drawPeakTBSingle(axSCIMES, tbSCIMES2 , velEdges ,areaCenter,label= label16SCI[2]  )
+		color6=self.drawPeakTBSingle(axSCIMES,  tbSCIMES6 , velEdges ,areaCenter,label= label16SCI[6]   )
+		color10=self.drawPeakTBSingle(axSCIMES,  tbSCIMES10 , velEdges ,areaCenter,label= label16SCI[10]   )
+		l=axSCIMES.legend(loc=1)
+
+
+		colorsDendro=[color2, color6, color10 ]
+		for text,color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+
+
+
+		at = AnchoredText("SCIMES", loc=4, frameon=False, pad=1 )
+		axSCIMES.add_artist(at)
+
+		axSCIMES.set_ylabel(r"Number of clusters")
+
+		axSCIMES.set_xlabel(r"Peak brightness temperature (K)")
+
+		axSCIMES.set_xlim(0,15)
+		fig.tight_layout()
+		plt.savefig("peakDistribute.pdf", bbox_inches='tight')
+		plt.savefig("peakDistribute.png", bbox_inches='tight', dpi=300)
+
+
+
+
+	def produceSCIMECat(self):
+		"""
+		To get the peak of clusters
+		:return:
+		"""
+		sicmesPath="/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/"
+		labelFITS = sicmesPath+"ClusterAsgn_3_16Ve20.fits"
+		savename = sicmesPath+"ClusterAsgn_3_16Ve20ManualCat"
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS, labelFITS, doDBSCAN.TBModel, minPix=16, rms=3,   saveMarker=savename)
+
+		#######################
+		sicmesPath="/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/"
+		labelFITS = sicmesPath+"ClusterAsgn_5_16Ve20.fits"
+		savename = sicmesPath+"ClusterAsgn_5_16Ve20ManualCat"
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS, labelFITS, doDBSCAN.TBModel, minPix=16, rms=5,   saveMarker=savename)
+
+		#######################
+		sicmesPath="/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/"
+		labelFITS = sicmesPath+"ClusterAsgn_7_16Ve20.fits"
+		savename = sicmesPath+"ClusterAsgn_7_16Ve20ManualCat"
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS, labelFITS, doDBSCAN.TBModel, minPix=16, rms=7,   saveMarker=savename)
+
+
+
+	def produceDENDROCat(self):
+		"""
+		To get the peak of clusters
+		:return:
+		"""
+		#sicmesPath="/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/"
+		labelFITS =  "G2650minV7minP16_TrunkAsignMask0.fits"
+		savename =  "Dendro_7_16Ve20ManualCat"
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS, labelFITS, doDBSCAN.TBModel, minPix=16, rms=3,   saveMarker=savename)
+
+		#######################
+		#sicmesPath="/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/"
+		labelFITS =  "G2650minV5minP16_TrunkAsignMask0.fits"
+		savename =  "Dendro_5_16Ve20ManualCat"
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS, labelFITS, doDBSCAN.TBModel, minPix=16, rms=5,   saveMarker=savename)
+
+		#######################
+		#sicmesPath="/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/"
+		labelFITS =   "G2650minV3minP16_TrunkAsignMask0.fits"
+		savename =  "Dendro_3_16Ve20ManualCat"
+		doDBSCAN.getCatFromLabelArray(G2650CO12FITS, labelFITS, doDBSCAN.TBModel, minPix=16, rms=7,   saveMarker=savename)
+
+
+
+
+	def physicalAreaDistribution(self):
+		"""
+		#draw the physical Area Distribution distribution of molecular clouds
+		:return:
+		"""
+
+		#9pixels at 1500 pc
+		completeArea=0.428 #36824657505895 #pc^2 should equal to
+
+		#use 3,5,7#because they all have observed area
+
+		algDendro = "Dendrogram"
+		tb8Den, tb16Den, label8Den, label16Den, sigmaListDen = self.getTBList(algorithm=algDendro)
+		tb8Den = self.removeAllEdges(tb8Den)
+		tb16Den = self.removeAllEdges(tb16Den)
+
+		algDB = "DBSCAN"
+		tb8DB, tb16DB, label8DB, label16DB, sigmaListDB = self.getTBList(algorithm=algDB)
+		tb8DB = self.removeAllEdges(tb8DB)
+		tb16DB = self.removeAllEdges(tb16DB)
+
+		algSCI = "SCIMES"
+		tb8SCI, tb16SCI, label8SCI, label16SCI, sigmaListSCI = self.getTBList(algorithm=algSCI)
+		tb8SCI = self.removeAllEdges(tb8SCI)
+		tb16SCI = self.removeAllEdges(tb16SCI)
+
+
+
+		## physicalEdges  physicalCenter
+		physicalEdges=np.linspace(0,100,1000) #square pc^2
+		physicalCenter=self.getEdgeCenter( physicalEdges )
+
+
+		velEdges = np.linspace(0, 40, 200)
+		areaCenter = self.getEdgeCenter(velEdges)
+
+		fig = plt.figure(figsize=(16, 5))
+		rc('text', usetex=True)
+		rc('font', **{'family': 'sans-serif', 'size': 13, 'serif': ['Helvetica']})
+
+		# Dendrogram....
+		axDendro = fig.add_subplot(1, 3, 1)
+		# self.drawVelTBSingle(axDendro, tb16Den[2] , velEdges ,areaCenter,label= label16Den[2]  )
+		# self.drawVelTBSingle(axDendro,  tb16Den[6] , velEdges ,areaCenter,label= label16Den[6]   )
+		# self.drawVelTBSingle(axDendro,  tb16Den[10] , velEdges ,areaCenter,label= label16Den[10]   )
+
+		# to be modified
+		tbDendro2 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/Dendro_3_16Ve20ManualCat.fit")
+		tbDendro6 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/Dendro_5_16Ve20ManualCat.fit")
+		tbDendro10 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/Dendro_7_16Ve20ManualCat.fit")
+
+		tbDendro2, tbDendro6, tbDendro10 = self.removeAllEdges([tbDendro2, tbDendro6, tbDendro10])
+
+		color2 = self.drawPhysicalAreaSingle(axDendro, tbDendro2, physicalEdges, physicalCenter, completeArea,label=label16Den[2])
+		color6 = self.drawPhysicalAreaSingle(axDendro, tbDendro6, physicalEdges, physicalCenter,completeArea, label=label16Den[6])
+		color10 = self.drawPhysicalAreaSingle(axDendro, tbDendro10, physicalEdges, physicalCenter, completeArea, label=label16Den[10])
+
+
+
+		l = axDendro.legend(loc=1)
+		colorsDendro = [color2, color6, color10]
+		for text, color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+
+		#draw complete line
+		axDendro.plot( [completeArea,completeArea],[2,2000],'--',color='black', lw=1  )
+
+
+		at = AnchoredText("Dendrogram", loc=3, frameon=False, pad=0.2)
+		axDendro.add_artist(at)
+
+
+		xLabelStr= r"Phyiscal area ($\rm pc^{2}$)"
+		axDendro.set_ylabel(r"Number of trunks")
+
+		axDendro.set_xlabel( xLabelStr )
+
+
+		axDendro.set_yscale('log')
+		axDendro.set_xscale('log')
+
+
+		# DBSCAN........
+		axDBSCAN = fig.add_subplot(1, 3, 2, sharex=axDendro, sharey=axDendro)
+
+
+
+		color2 = self.drawPhysicalAreaSingle(axDBSCAN, tb16DB[2], physicalEdges, physicalCenter, completeArea,label=label16DB[2])
+		color6 = self.drawPhysicalAreaSingle(axDBSCAN, tb16DB[6], physicalEdges, physicalCenter,completeArea, label=label16DB[6])
+		color10 = self.drawPhysicalAreaSingle(axDBSCAN, tb16DB[10], physicalEdges, physicalCenter, completeArea, label=label16DB[10])
+
+
+		l = axDBSCAN.legend(loc=1)
+		colorsDendro = [color2, color6, color10]
+		for text, color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+		at = AnchoredText("DBSCAN", loc=3, frameon=False, pad=0.2)
+		axDBSCAN.add_artist(at)
+		# axDBSCAN.set_xlabel(r"Peak values (K)")
+		axDBSCAN.set_xlabel( xLabelStr )
+		axDBSCAN.set_ylabel(r"Number of trunks")
+		axDBSCAN.plot( [completeArea,completeArea],[2,2000],'--',color='black', lw=1  )
+
+
+		##SCIMES
+
+		axSCIMES = fig.add_subplot(1, 3, 3, sharex=axDendro, sharey=axDendro)
+
+		tbSCIMES2 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/ClusterAsgn_3_16Ve20ManualCat.fit")
+		tbSCIMES6 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/ClusterAsgn_5_16Ve20ManualCat.fit")
+		tbSCIMES10 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/scimesG2650/ClusterAsgn_7_16Ve20ManualCat.fit")
+
+		tbSCIMES2, tbSCIMES6, tbSCIMES10 = self.removeAllEdges([tbSCIMES2, tbSCIMES6, tbSCIMES10])
+
+
+		color2 = self.drawPhysicalAreaSingle(axSCIMES, tbSCIMES2, physicalEdges, physicalCenter, completeArea,label=label16SCI[2])
+		color6 = self.drawPhysicalAreaSingle(axSCIMES, tbSCIMES6 , physicalEdges, physicalCenter,completeArea, label=label16SCI[6])
+		color10 = self.drawPhysicalAreaSingle(axSCIMES,  tbSCIMES10 , physicalEdges, physicalCenter, completeArea, label=label16SCI[10])
+
+
+
+		l = axSCIMES.legend(loc=1)
+
+		colorsDendro = [color2, color6, color10]
+		for text, color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+		at = AnchoredText("SCIMES", loc=3, frameon=False, pad=0.2)
+		axSCIMES.add_artist(at)
+
+
+
+		axSCIMES.set_ylabel(r"Number of clusters")
+		axSCIMES.set_xlabel(xLabelStr)
+		axSCIMES.plot( [completeArea,completeArea],[2,2000],'--',color='black', lw=1  )
+		axSCIMES.set_yscale('log')
+		axSCIMES.set_xscale('log')
+
+
+
+		fig.tight_layout()
+		plt.savefig("physicalAreaDistribute.pdf", bbox_inches='tight')
+		plt.savefig("physicalAreaDistribute.png", bbox_inches='tight', dpi=300)
+
+
+	def drawOverallMoment(self):
+		"""
+		draw a simple map for over all moment of local molecular clouds
+		:return:
+		"""
+		fitsFile="allM0G2650Local.fits"
+		import matplotlib
+		from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
+		from mpl_toolkits.axes_grid1.axes_grid import AxesGrid
+
+		dataCO,headCO=myFITS.readFITS(fitsFile)
+
+		wcsCO=WCS(headCO)
+
+
+		fig = plt.figure(1 , figsize=(16, 8) )
+		rc('font', **{'family': 'sans-serif', 'serif': ['Helvetica']})
+		#rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+
+		rc('text', usetex=True)
+
+		# grid helper
+		grid_helper = pywcsgrid2.GridHelper(wcs=wcsCO)
+
+		# AxesGrid to display tow images side-by-side
+		fig = plt.figure(1, (6, 3.5))
+
+
+		grid = ImageGrid(fig, (1, 1, 1), nrows_ncols=(1, 1),
+						 cbar_mode="single", cbar_pad="0.5%",
+						 cbar_location="top", cbar_size="2%",
+						 axes_class=(pywcsgrid2.Axes, dict(header= wcsCO)))
+
+		main_axes = grid[0]
+		main_axes.locator_params(nbins=10)
+
+		cb_axes = grid.cbar_axes[0]  # colorbar axes
+
+		im = main_axes.imshow(np.sqrt(dataCO),origin='lower',cmap="jet",  vmin=0, vmax= 2.4 , interpolation='none')
+		main_axes.axis[:].major_ticks.set_color("w")
+		cb=cb_axes.colorbar(im)
+		#cb_axes.axis["right"].toggle(ticklabels=True)
+		cb_axes.set_xlabel("K")
+
+ 		#print dir(cb_axes.axes)
+
+		tickesArray=np.asarray( [0,0.1,0.5,1,2,3,4,5] )
+
+		cb.ax.set_xticks( np.sqrt( tickesArray)   )
+		cb.ax.set_xticklabels( map(str,tickesArray) )
+
+		#cbar.ax.set_xticksset_xticklabels(['Low', 'Medium', 'High'])
+
+
+		fig.tight_layout()
+		plt.savefig("localM0.pdf", bbox_inches='tight')
+		plt.savefig("localM0.png", bbox_inches='tight', dpi=300)
+
+
+
+	def drawCheckClouds(self):
+		"""
+		compare the result of molecular clouds
+		:return:
+		"""
+		#drawLrange,drawBrange=gaiaDis.box(38.9496172,0.1091115,3263.632 ,2991.628 ,4.9024796e-06)
+		#region 2
+		#drawLrange,drawBrange=gaiaDis.box(44.8346022,0.8519293,2361.857 ,2141.563 ,4.9024796e-06)
+		drawLrange,drawBrange=gaiaDis.box(42.8611667,0.1834138,3122.226 ,2901.286 ,4.9024796e-06)
+
+
+		#vRange=[1.8,9.8] #km/s
+		vRange = [ -6,  6	 ]  # km/s
+
+		#first crop fits
+
+		rawCO="G2650Local30.fits"
+		
+		rawCO="G2650CO12MaskedCO.fits"
+
+		
+		labelDendroFITS = "G2650minV3minP16_TrunkAsignMask0.fits"
+		labelDBSCANFITS = "DBCLEAN3.0_16Label.fits"
+		labelSCIMESFITS = "./scimesG2650/ClusterAsgn_3_16Ve20.fits"
+
+		cropRawcoFITS =  self.tmpPath + "cropRawco.fits"
+		cropDendroFITS = self.tmpPath + "cropDendro.fits"
+		cropSCIMES = self.tmpPath + "cropScimes.fits"
+		cropDBSCAN=  self.tmpPath + "cropDbscan.fits"
+
+
+		doFITS.cropFITS(rawCO,outFITS=cropRawcoFITS,Vrange=vRange,Brange=drawBrange,Lrange=drawLrange , overWrite=True )
+
+		#cropFITS 3D
+		doFITS.cropFITS(labelDendroFITS,outFITS=cropDendroFITS,Vrange=vRange,Brange=drawBrange,Lrange=drawLrange , overWrite=True )
+		doFITS.cropFITS(labelDBSCANFITS,outFITS=cropDBSCAN,Vrange=vRange,Brange=drawBrange,Lrange=drawLrange , overWrite=True )
+		
+
+		doFITS.cropFITS(labelSCIMESFITS,outFITS=cropSCIMES,Vrange=vRange,Brange=drawBrange,Lrange=drawLrange , overWrite=True )
+
+
+		#check uniqueness along each points
+		if 1:
+			self.checkUniqueness(cropDendroFITS )
+			self.checkUniqueness(cropDBSCAN )
+			self.checkUniqueness(cropSCIMES )
+
+		labelDendro,labelHead=self.getIntLabel(cropDendroFITS )
+
+		WCSCrop=WCS(labelHead)
+
+		fig = plt.figure(1, figsize=(10, 9) )
+		rc('font', **{'family': 'sans-serif', 'serif': ['Helvetica'], "size":13 })
+		#rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+
+		rc('text', usetex=True)
+
+		axCO= pywcsgrid2.subplot(221, header=   WCSCrop  )
+
+
+		dataCO,headCO=myFITS.readFITS(cropRawcoFITS)
+
+		intData=np.sum(dataCO,axis=0)*0.2
+
+		axCO.imshow(np.sqrt( intData),origin='lower',cmap="bone",vmin=0 ,vmax=4, interpolation='none')
+
+		at = AnchoredText(r"$^{12}\mathrm{CO}~(J=1\rightarrow0)$", loc=1, frameon=False,  prop={"color": "w","size":13 })
+		axCO.add_artist(at)
+
+		axCO.set_ticklabel_type("absdeg", "absdeg")
+		axCO.axis[:].major_ticks.set_color("w")
+
+
+		###dendrogram
+
+		axDendrogram= pywcsgrid2.subplot(222, header=   WCSCrop ,sharex=axCO,sharey=axCO )
+		#self.showLabels(axDendrogram,labelDendro  )
+
+		self.showLabels(axDendrogram,labelDendro  )
+		#axDendrogram.imshow(labelDendro,origin='lower',cmap="jet", interpolation='none')
+
+
+		at = AnchoredText("Dendrogram", loc=1, frameon=False,  prop={"color": "w","size":13 })
+		axDendrogram.add_artist(at)
+		axDendrogram.set_ticklabel_type("absdeg", "absdeg")
+		axDendrogram.axis[:].major_ticks.set_color("w")
+
+		###DBSCAN
+		labelDBSCAN,labelHead=self.getIntLabel(cropDBSCAN )
+
+		axDBSCAN = pywcsgrid2.subplot(223, header=WCSCrop, sharex=axCO, sharey=axCO)
+		self.showLabels(axDBSCAN, labelDBSCAN)
+		#axDBSCAN.imshow(labelDBSCAN,origin='lower',cmap="jet", interpolation='none')
+
+		
+		at = AnchoredText("DBSCAN", loc=1, frameon=False,  prop={"color": "w","size":13 })
+		axDBSCAN.add_artist(at)
+		axDBSCAN.set_ticklabel_type("absdeg", "absdeg")
+		axDBSCAN.axis[:].major_ticks.set_color("w")
+
+
+		##SCIMES
+		labelSCIMES,labelHead=self.getIntLabel(cropSCIMES )
+
+		axSCIMES = pywcsgrid2.subplot(224, header=WCSCrop, sharex=axCO, sharey=axCO)
+		self.showLabels(axSCIMES, labelSCIMES)
+		
+		#axSCIMES.imshow(labelSCIMES,origin='lower',cmap="jet", interpolation='none')
+
+		
+		at = AnchoredText("SCIMES", loc=1, frameon=False, prop={"color": "w","size":13 })
+		axSCIMES.add_artist(at)
+		axSCIMES.set_ticklabel_type("absdeg", "absdeg")
+		axSCIMES.axis[:].major_ticks.set_color("w")
+
+
+
+		fig.tight_layout(pad=0.2)
+		plt.savefig("checkCloud.pdf", bbox_inches="tight")
+
+		plt.savefig("checkCloud.png", bbox_inches="tight",dpi=600)
+
+
+
+
+	def getIntLabel(self,cropLabelFITS):
+		labelDendroData, labelHead = doFITS.readFITS(cropLabelFITS)
+
+		minVDendro = np.nanmin(labelDendroData)
+
+		uniqueValues = np.unique(labelDendroData)
+		# print 0 in uniqueValues
+
+		labelDendroData[labelDendroData == minVDendro] = np.NaN
+
+		meanLabel = np.nanmean(labelDendroData, axis=0)
+
+		#meanLabel=np.nan_to_num(meanLabel)
+
+		return meanLabel,labelHead
+
+
+
+	def checkUniqueness(self,cropDendroFITS):
+
+		labelDendroData,_ = doFITS.readFITS( cropDendroFITS )
+
+		minVDendro = np.nanmin( labelDendroData )
+
+		uniqueValues=np.unique(labelDendroData)
+		#print 0 in uniqueValues
+		 
+
+		labelDendroData[ labelDendroData == minVDendro ] = np.NaN
+
+
+		meanLabel=np.nanmean( labelDendroData,axis=0 )
+
+		#meanLabel=np.nan_to_num(meanLabel)
+
+		uniqueValuesV2=np.unique( meanLabel )
+		uniqueValuesV2=uniqueValuesV2[uniqueValuesV2>minVDendro-1]
+
+
+		print len( uniqueValues ), "==",  len( uniqueValuesV2 )+1
+
+
+
+	def ZZZZZZ(self):
 		pass
 
 
@@ -2880,11 +3735,56 @@ G2650MaskCO = "G2650CO12MaskedCO.fits"
 #veloicty distance, relation
 # 13.46359868  4.24787753
 
+if 0:
 
-if 1:
-	drawLrange,drawBrange=gaiaDis.box(38.4031840,0.3732480,22768.128 ,18363.802 ,0)
+	doDBSCAN.drawCheckClouds()
+	sys.exit()
 
-	doDBSCAN.drawCloudMap( lRange=drawLrange,bRange=drawBrange,  drawChannel= 69 )
+if 0:
+	doDBSCAN.drawOverallMoment()
+
+	sys.exit()
+
+
+if 0:
+	#doDBSCAN.drawVeDistribution()
+	doDBSCAN.drawPeakDistribution()
+
+	#doDBSCAN.physicalAreaDistribution()
+	sys.exit()
+
+
+
+if 0:
+	doDBSCAN.produceDENDROCat()
+	sys.exit()
+if 1:  # compare distributions
+	#doDBSCAN.numberDistribution()
+	#doDBSCAN.totaFluxDistribution() # add
+
+	#doDBSCAN.fluxDistribution()
+
+	#doDBSCAN.areaDistribution()
+	#doDBSCAN.alphaDistribution()
+	doDBSCAN.fluxAlphaDistribution()
+
+	sys.exit()
+
+##
+if 0:#Scimes pipe line
+
+	doDBSCAN.produceSCIMECat()
+	#get catalog from scimes fits
+
+	sys.exit()
+
+
+
+if 0:
+	#drawLrange,drawBrange=gaiaDis.box(38.4031840,0.3732480,22768.128 ,18363.802 ,0)
+	drawLrange,drawBrange=gaiaDis.box(28.9977093,-0.0541066,22680.000 ,18662.400 ,0)
+
+	doDBSCAN.drawCloudMap( lRange=drawLrange,bRange=drawBrange,  drawChannel= 91 )
 
 	#doDBSCAN
 	#doDBSCAN.drawAreaDistribute("ClusterCat_3_16Ve20.fit", region="scimes")
@@ -2895,6 +3795,27 @@ if 1:
 
 
 
+if 0:#use DBSCAN to produe dendrotrunks
+	COData, COHead = myFITS.readFITS(G2650CO12FITS)
+	#DBLabelFITS="G2650CO12DendroByDBSCANdbscanS7P3Con1.fits"
+	#DBTableFile="G2650CO12DendroByDBSCANCatS7P3Con1.fit"
+
+	#doDBSCAN.clearnDBAssign(  DBLabelFITS, DBTableFile, pixN=16, minDelta=3, minV=7,   prefix="mimicDendro" )
+
+	#DbscanSigmaList = np.arange(6)
+	#for sigmas in [7]:
+		#print "Calculating dengram with dBSCAN sigma:", sigmas
+		#doDBSCAN.computeDBSCAN(COData, COHead, min_sigma=sigmas, min_pix= 3 , connectivity=1, region="G2650CO12DendroByDBSCAN" , mimicDendro= False )
+	#sys.exit()
+	if 1: #step2, calculate all catalog
+		DbscanSigmaList = np.arange(2, 7.5, 0.5)
+		for sigmas in [7]:
+			labelFITS="G2650CO12DendroByDBSCANdbscanS7P3Con1.fits"
+			savename="G2650CO12DendroByDBSCANCatS{}P{}Con1".format(sigmas,3)
+
+			doDBSCAN.getCatFromLabelArray( G2650CO12FITS,  labelFITS  ,  doDBSCAN.TBModel, minPix=3, rms=sigmas, saveMarker= savename )
+
+	sys.exit()
 
 if 0: #small test
 	pass
@@ -2904,31 +3825,8 @@ if 0: #small test
 	print TBListP8
 	sys.exit()
 
-if 0: #compare distributions
-	#doDBSCAN.numberDistribution()
-	#doDBSCAN.totaFluxDistribution() # add
 
 
-
-	#doDBSCAN.fluxDistribution()
-	
-	
-
-	#doDBSCAN.areaDistribution()
-	doDBSCAN.alphaDistribution()
-	doDBSCAN.fluxAlphaDistribution()
-
-
-
-	sys.exit()
-
-
-
-
-if 0:#Scimes pipe line
-
-	doDBSCAN.extendAllScimes() #do not extend SCIMES any more, because negative values found
-	sys.exit()
 
 
 
@@ -2945,8 +3843,6 @@ if 0: #high Galacticlatitudes, ursa major
 	#doDBSCAN.drawAreaDistribute("UMCO12_2_8.fit" , region="Taurus" )
 
 	sys.exit()
-
-
 
 
 
