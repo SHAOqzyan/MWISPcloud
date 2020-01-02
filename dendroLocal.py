@@ -123,6 +123,38 @@ class MWcloud:
 			#self.doSCIMES(COFITS,dendroFile,catFile,   saveMark+'VoLu', inputD=d   )
 
 
+
+	def getAssignByTB(self,d,COFITS, TBFile,saveFITS):
+		"""
+
+		:param d:
+		:param COFITS:
+		:param saveFITS:
+		:return:
+		"""
+
+		hdu= fits.open(COFITS)[0]
+
+		data=hdu.data
+		head=hdu.header
+
+		data0=np.zeros_like(data)
+		TB=Table.read(TBFile)
+
+		for eachR in TB:
+
+			dendroID=eachR["_idx"]
+
+			eachCluster=d[dendroID]
+
+
+			tID =    dendroID+1
+			tMask=eachCluster.get_mask().astype("short")
+			data0= data0 + tMask*tID
+
+		fits.writeto(saveFITS, data0-1, header=head,  overwrite=True  )
+
+
 	def produceAssignFITS(self, d, COFITS,  saveFITS  ):
 		"""
 		#only consider trunks
@@ -364,7 +396,16 @@ class MWcloud:
 doCloud=MWcloud()
 
 
-if 1:#reproduce trunk assign
+if 1: #get cluster Assign
+
+	#d = Dendrogram.load_from("minV2minP8_dendro.fits")
+	#doCloud.getAssignByTB(d, "ClusterCat_2_8Ve20.fit", "ClusterAsgn_2_8Ve20_mannual.fits" )
+	d = Dendrogram.load_from("minV7minP8_dendro.fits")
+	doCloud.getAssignByTB(d, "ClusterCat_7_8Ve20.fit", "ClusterAsgn_7_8Ve20_mannual.fits" )
+
+
+
+if 0:#reproduce trunk assign
 
 	for sigmas in [7, 2,2.5,3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5  ]:
 		for pixN in [8,16]:
