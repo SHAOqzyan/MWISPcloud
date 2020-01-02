@@ -4876,7 +4876,7 @@ G2650MaskCODendro = "G2650CO12DendroMaskedCO.fits"
 
 
 
-if 1:
+if 0:
 	algSCI = "SCIMES"
 	tb8SCI, tb16SCI, label8SCI, label16SCI, sigmaListSCI = doDBSCAN.getTBList(algorithm=algSCI)
 	tb8SCI = doDBSCAN.removeAllEdges(tb8SCI)
@@ -4888,12 +4888,12 @@ if 1:
 	sys.exit()
 
 
-if 0: #Generate manucate for peak distribution, because SCIMES and dendro has not peak and intensity
+if 1: #Generate manucate for peak distribution, because SCIMES and dendro has not peak and intensity
 
 	#dendrogram
-	doDBSCAN.getCatFromLabelArray(doDBSCAN.rawCOFITS, "G2650minV2minP8_TrunkAsignMask0.fits", doDBSCAN.TBModel, minPix=8, rms=2, saveMarker="dendroMannual")
-	doDBSCAN.getCatFromLabelArray(doDBSCAN.rawCOFITS, "G2650minV4minP8_TrunkAsignMask0.fits", doDBSCAN.TBModel, minPix=8, rms=4, saveMarker="dendroMannual")
-	doDBSCAN.getCatFromLabelArray(doDBSCAN.rawCOFITS, "G2650minV6minP8_TrunkAsignMask0.fits", doDBSCAN.TBModel, minPix=8, rms=6, saveMarker="dendroMannual")
+	doDBSCAN.getCatFromLabelArray(doDBSCAN.rawCOFITS, "G2650minV2minP8_TrunkAsignMask0.fits", doDBSCAN.TBModel, minPix=8, rms=2, saveMarker="minV2minP8dendroMannualCat")
+	doDBSCAN.getCatFromLabelArray(doDBSCAN.rawCOFITS, "G2650minV4minP8_TrunkAsignMask0.fits", doDBSCAN.TBModel, minPix=8, rms=4, saveMarker="minV4minP8dendroMannualCat")
+	doDBSCAN.getCatFromLabelArray(doDBSCAN.rawCOFITS, "G2650minV6minP8_TrunkAsignMask0.fits", doDBSCAN.TBModel, minPix=8, rms=6, saveMarker="minV6minP8dendroMannualCat")
 
 	#scimes
 	#doDBSCAN.getCatFromLabelArray(doDBSCAN.rawCOFITS, "./scimesG2650/ClusterAsgn_2_8Ve20.fits", doDBSCAN.TBModel, minPix=8, rms=2, saveMarker="scimesMannual")

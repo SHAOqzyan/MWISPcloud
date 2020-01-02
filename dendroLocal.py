@@ -401,7 +401,8 @@ if 1: #get cluster Assign
 	#d = Dendrogram.load_from("minV2minP8_dendro.fits")
 	#doCloud.getAssignByTB(d, "ClusterCat_2_8Ve20.fit", "ClusterAsgn_2_8Ve20_mannual.fits" )
 	d = Dendrogram.load_from("minV7minP8_dendro.fits")
-	doCloud.getAssignByTB(d, "ClusterCat_7_8Ve20.fit", "ClusterAsgn_7_8Ve20_mannual.fits" )
+	COFITS = "G2650Local30.fits"
+	doCloud.getAssignByTB(d,COFITS, "ClusterCat_7_8Ve20.fit", "ClusterAsgn_7_8Ve20_mannual.fits" )
 
 
 
