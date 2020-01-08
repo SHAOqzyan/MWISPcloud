@@ -3888,8 +3888,8 @@ class myDBSCAN(object):
 		#W49  G043.2+0.01  W49 2013ApJ...775...79Z
 		main_axes["gal"].text(43.2, 0.01, "W49",  color=fontColor, alpha=fontAlpha,fontsize=fontSize,horizontalalignment='center',   verticalalignment='center' )
 
-		#G032.79+00.19(H)
-		main_axes["gal"].text(32.79,   0.19 , "1",  color=fontColor, alpha=fontAlpha,fontsize=fontSize,horizontalalignment='center',   verticalalignment='center' )
+		##G032.79+00.19(H)
+		#main_axes["gal"].text(32.79,   0.19 , "1",  color=fontColor, alpha=fontAlpha,fontsize=fontSize,horizontalalignment='center',   verticalalignment='center' )
 
 		###  049.1405 -00.6028
 		#main_axes["gal"].text(49.14, -00.60 , "W51",  color=fontColor, alpha=fontAlpha,fontsize=fontSize ,horizontalalignment='center',   verticalalignment='center' )
@@ -3910,7 +3910,22 @@ class myDBSCAN(object):
 		#Serpens NE
 		main_axes["gal"].text(31.5768569 , 3.0808449 ,  "Serpens NE",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
 
-		31.5768569
+		   
+
+		#LDN 566
+		main_axes["gal"].text( 030.3739 , -01.0749,  "LDN 566",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+
+
+		#LDN 617
+		main_axes["gal"].text( 34.5724  ,-00.862,  "LDN 617",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+
+		#LDN 673
+		main_axes["gal"].text( 46.263 , -01.3303,  "LDN 673",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+
+		##LDN 603
+		#main_axes["gal"].text( 33.163 , +01.496 ,  "LDN 603",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+
+
 
 
 		#####serpense NE cluster
@@ -5095,8 +5110,113 @@ class myDBSCAN(object):
 			cName="G{}{}".format(lStr,bStr)
 
 			return cName
+
+
+	def contourDisClouds(self,fitsFile="normalInt.fits"):
+
+
+		# what is the unit of this integrated intensity?
+		import matplotlib
+		from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
+		from mpl_toolkits.axes_grid1.axes_grid import AxesGrid
+		from matplotlib.colors import LogNorm
+
+		dataCO, headCO = myFITS.readFITS(fitsFile)
+
+		wcsCO = WCS(headCO)
+
+		fig = plt.figure(1, figsize=(16, 7.8))
+		rc('font', **{'family': 'sans-serif', 'serif': ['Helvetica'], 'size': 20})
+		# rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+
+		rc('text', usetex=True)
+
+		# grid helper
+		grid_helper = pywcsgrid2.GridHelper(wcs=wcsCO)
+
+		# AxesGrid to display tow images side-by-side
+		fig = plt.figure(1, (6, 3.5))
+
+		grid = ImageGrid(fig, (1, 1, 1), nrows_ncols=(1, 1),
+						 cbar_mode="single", cbar_pad="0.3%",
+						 cbar_location="right", cbar_size="1%",
+						 axes_class=(pywcsgrid2.Axes, dict(header=wcsCO)))
+
+		main_axes = grid[0]
+		main_axes.locator_params(nbins=10)
+		cb_axes = grid.cbar_axes[0]  # colorbar axes
+
+		a = np.log(dataCO)
+
+		a = a[a > 0]
+		print np.min(a), np.max(a), "minimum and maxinum after "
+
+		# im = main_axes.imshow(np.sqrt(dataCO),origin='lower',cmap="jet",  vmin=np.sqrt(1.9*1.5), vmax= np.sqrt( 81) , interpolation='none')
+
+		# im = main_axes.imshow( dataCO ,origin='lower',cmap="jet",  vmin=-10, vmax= 80 , interpolation='none')
+
+		# im = main_axes.imshow(np.log(dataCO),origin='lower',cmap="jet",   interpolation='none')
+
+		im = main_axes.imshow(np.log(dataCO), origin='lower', cmap="bone", vmin=np.log(1.9  ), vmax=np.log(110),
+							  interpolation='none')
+
+		main_axes.set_facecolor('black')
+		main_axes.axis[:].major_ticks.set_color("white")
+
+
+		# print dir(cb_axes.axes)
+
+		# tickesArray=np.asarray( [0,0.1,0.5,1,2,3,4,5] )
+		tickesArray = np.asarray([5, 10, 20, 40, 80])
+		# tickesArray=tickesArray**2
+		#cb.ax.set_yticks(np.log(tickesArray))
+		#cb.ax.set_yticklabels(map(str, tickesArray))
+
+		#contour good Clouds
+		import matplotlib as mpl
+		goodCloudTB="/home/qzyan/WORK/projects/maddalena/dendroDisPath/G2650/G2650goodDisTB.fit"
+		goodCloudTB=Table.read( goodCloudTB )
+		import matplotlib.cm as cm
+		norm = mpl.colors.Normalize(vmin=0.2, vmax=1.5)
+		cmap = cm.jet
+		m = cm.ScalarMappable(norm=norm, cmap=cmap)
+
+
+		for eachC in  goodCloudTB:
+			#pass
+			cloudName= eachC["sourceName"]
+
+			cloudID=int( cloudName.split("oud")[1])
+			maskFITS=glob.glob("/home/qzyan/WORK/myDownloads/testScimes/G2650Formal/cloudInt/Cloud{}_mask.fits".format(cloudID))[0]
+
+			dataMask,headMask=myFITS.readFITS( maskFITS )
+			distance=eachC["distance"]/1000.
+			cloudColor = m.to_rgba( distance)
+
+			c=main_axes.contour(dataMask, colors=[cloudColor], linewidths=0.6, origin="lower", levels=[1])
+
+			#trueCloud Name
+
+			main_axes["gal"].text(eachC["l"],  eachC["b"],  eachC["Note"],color=cloudColor,fontsize=8 ,horizontalalignment='center',   verticalalignment='center' )
+
+		cb = mpl.colorbar.ColorbarBase(cb_axes,norm=norm,cmap=cmap)
+
+		#cb_axes = fig.colorbar(c, ax=main_axes, cmap=cmap, norm=norm, pad=0.01)
+		# cb_axes.axis["right"].toggle(ticklabels=True)
+		cb_axes.set_ylabel("Distance (kpc)")
+		#cb_axes.set_xlabel("")
+
+
+		fig.tight_layout()
+		plt.savefig("contourDisClouds.pdf", bbox_inches='tight')
+		plt.savefig("contourDisClouds.png", bbox_inches='tight', dpi=300)
+
 	def ZZZZZZ(self):
 		pass
+		"""
+		draw a simple map for over all moment of local molecular clouds
+		:return:
+		"""
 
 
 
@@ -5117,9 +5237,13 @@ G2650MaskCO = "G2650CO12MaskedCO.fits"
 
 G2650MaskCODendro = "G2650CO12DendroMaskedCO.fits"
 
-#G2650Figures
 
 if 1:
+
+	doDBSCAN.contourDisClouds()
+	sys.exit()
+#G2650Figures
+if 0:
 	doDBSCAN.drawOverallMoment()
 	#doDBSCAN.drawLV()
 

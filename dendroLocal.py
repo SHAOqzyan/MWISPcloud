@@ -69,6 +69,9 @@ class MWcloud:
 		:param minDelta:
 		:return:
 		"""
+		if saveName==None:
+			saveName=""
+
 		saveMark=saveName+"minV{}minP{}".format(minV,minPix)
 
 		treeFile= saveMark+"_Tree.txt"
@@ -95,12 +98,8 @@ class MWcloud:
 
 		self.produceAssignFITS(d,COFITS,trunkFITS)
 
-		if saveName!=None:
-			d.save_to( "localDendro.fits"  )
 
-
-		else:
-			d.save_to( dendroFile )
+		d.save_to( dendroFile )
 
 		#calculate the catalog
 		cat = ppv_catalog(d, self.metadata)
