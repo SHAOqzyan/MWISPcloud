@@ -845,8 +845,8 @@ class myDBSCAN(object):
 		binN,binEdges=np.histogram(goodT["area_exact"]/3600., bins=areaEdges  )
 		axArea.plot( areaCenter[binN>0],binN[binN>0], 'o-'  , markersize=1, lw=0.8,  alpha= 0.5, label= region)#   r"SCIMES,min3$\sigma$P16 12CO"  )
 		print region
-		self.getAlphaWithMCMC(  goodT["area_exact"] , minArea= 0.00065, maxArea=None , physicalArea=False )
-
+		self.getAlphaWithMCMC(  goodT["area_exact"]  , minArea= 50.*0.25/3600  , maxArea=None , physicalArea=False )
+		print region,"Done"
 		#a=np.linspace(1,3000,6000)
 
 		#trueArea=1./a**2
@@ -1347,10 +1347,12 @@ class myDBSCAN(object):
 			fluxlist.append(  toalFlux  )
 		return fluxlist
 
-	def fluxAlphaDistribution(self):
+	def fluxAlphaDistribution(self, onlyLocal=False):
 		"""
 
 		# draw alph distribution of flux, for each DBSCAN,
+
+		#  onlyLocal,
 
 		:return:
 		"""
@@ -1360,10 +1362,22 @@ class myDBSCAN(object):
 		tb8Den = self.removeAllEdges(tb8Den)
 		tb16Den = self.removeAllEdges(tb16Den)
 
+		if onlyLocal:
+			tb8Den = self.removePerseusList( tb8Den )
+			tb16Den = self.removePerseusList( tb16Den )
+
+
+
 		algDB = "DBSCAN"
 		tb8DB, tb16DB, label8DB, label16DB, sigmaListDB = self.getTBList(algorithm=algDB)
 		tb8DB = self.removeAllEdges(tb8DB)
 		tb16DB = self.removeAllEdges(tb16DB)
+
+		if onlyLocal:
+			tb8DB = self.removePerseusList(tb8DB)
+			tb16DB = self.removePerseusList(tb16DB)
+
+
 
 
 		algSCI="SCIMES"
@@ -1372,7 +1386,9 @@ class myDBSCAN(object):
 		tb16SCI=self.removeAllEdges(tb16SCI)
 		
 
-
+		if onlyLocal:
+			tb8SCI = self.removePerseusList(tb8SCI)
+			tb16SCI = self.removePerseusList(tb16SCI)
 
 
 
@@ -1381,13 +1397,27 @@ class myDBSCAN(object):
 		rc('text', usetex=True)
 		rc('font', **{'family': 'sans-serif', 'size': 13, 'serif': ['Helvetica']})
 
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
+
+
 		#############   plot dendrogram
 		axDendro = fig.add_subplot(1, 1, 1)
 
 		alphaDendro, alphaDendroError = self.getFluxAlphaList(tb16Den, sigmaListDen)
 
-		ebDendro=axDendro.errorbar(sigmaListDen, alphaDendro, yerr=alphaDendroError, c='g', marker='D', capsize=3 , elinewidth=1.3, lw=1, label=algDendro)
 
+		if onlyLocal: #
+			ebDendro=axDendro.errorbar(sigmaListDen, alphaDendro, yerr=alphaDendroError, c='g', marker='D', capsize=3 , elinewidth=1.3, lw=1, label=algDendro+r" ($|b|>1^{\circ}$)")
+			
+		else:
+			ebDendro=axDendro.errorbar(sigmaListDen, alphaDendro, yerr=alphaDendroError, c='g', marker='D', capsize=3 , elinewidth=1.3, lw=1, label=algDendro)
 
 
 		axDendro.set_ylabel(r"$\alpha$ (flux)")
@@ -1396,14 +1426,27 @@ class myDBSCAN(object):
 		##############   plot DBSCAN
 
 		alphaDB, alphaDBError =   self.getFluxAlphaList(tb16DB, sigmaListDB)
-		ebDBSCAN = axDendro.errorbar(sigmaListDB, alphaDB, yerr=alphaDBError, c='b', marker='^',linestyle=":" , capsize=3 , elinewidth=1.0, lw=1, label=algDB ,  markerfacecolor='none' )
+		
+		if onlyLocal: #
+			ebDBSCAN = axDendro.errorbar(sigmaListDB, alphaDB, yerr=alphaDBError, c='b', marker='^',linestyle=":" , capsize=3 , elinewidth=1.0, lw=1, label=algDB+r" ($|b|>1^{\circ}$)" ,  markerfacecolor='none' )
+		else:
+			ebDBSCAN = axDendro.errorbar(sigmaListDB, alphaDB, yerr=alphaDBError, c='b', marker='^',linestyle=":" , capsize=3 , elinewidth=1.0, lw=1, label=algDB ,  markerfacecolor='none' )
 
 		ebDBSCAN[-1][0].set_linestyle(':')
 
 		##########plot SCIMES
 
 		alphaSCI, alphaDBError =   self.getFluxAlphaList(tb16SCI, sigmaListSCI)
-		ebSCISCAN = axDendro.errorbar(sigmaListSCI, alphaSCI, yerr=alphaDBError, c='purple', marker='s',linestyle="--", capsize=3 , elinewidth=1.0, lw=1, label=algSCI,  markerfacecolor='none' )
+
+
+
+		if onlyLocal: #
+			ebSCISCAN = axDendro.errorbar(sigmaListSCI, alphaSCI, yerr=alphaDBError, c='purple', marker='s',linestyle="--", capsize=3 , elinewidth=1.0, lw=1, label=algSCI+r" ($|b|>1^{\circ}$)",  markerfacecolor='none' )
+
+		else:
+			ebSCISCAN = axDendro.errorbar(sigmaListSCI, alphaSCI, yerr=alphaDBError, c='purple', marker='s',linestyle="--", capsize=3 , elinewidth=1.0, lw=1, label=algSCI,  markerfacecolor='none' )
+
+
 
 		ebSCISCAN[-1][0].set_linestyle('--')
 
@@ -1420,8 +1463,8 @@ class myDBSCAN(object):
 			alphaMean = np.mean(allAlpha)
 
 			print "The mean alpha of flux distribution is {:.2f}, error is {:.2f}".format(alphaMean, errorAlpha)
-
-			axDendro.plot([min(sigmaListDB), max(sigmaListDB)], [alphaMean, alphaMean], '--', color='black', lw=1)
+			labelAverage = r"{:.2f}$\pm${:.2f}".format(alphaMean, errorAlpha)
+			axDendro.plot([min(sigmaListDB), max(sigmaListDB)], [alphaMean, alphaMean], '--', color='black', lw=1,label=labelAverage)
 
 		plt.xticks( [2,3,4,5,6,7],["2 (1.0 K)", "3 (1.5 K)" , "4 (2.0 K)" , "5 (2.5 K)" , "6 (3.0 K)" , "7 (3.5 K)"    ] )
 
@@ -1429,10 +1472,22 @@ class myDBSCAN(object):
 		axDendro.legend(loc=1)
 
 		fig.tight_layout()
-		plt.savefig("compareParaFluxAlpha.pdf", bbox_inches='tight')
-		plt.savefig("compareParaFluxAlpha.png", bbox_inches='tight', dpi=300)
 
-	def alphaDistribution(self):
+
+
+		if onlyLocal:
+
+			plt.savefig("compareParaFluxAlphaOnlyLocal.pdf", bbox_inches='tight')
+			plt.savefig("compareParaFluxAlphaOnlyLocal.png", bbox_inches='tight', dpi=300)
+
+		else:
+			plt.savefig("compareParaFluxAlpha.pdf", bbox_inches='tight')
+			plt.savefig("compareParaFluxAlpha.png", bbox_inches='tight', dpi=300)
+
+			
+
+
+	def alphaDistribution(self,onlyLocal=False):
 		"""
 
 		# draw alph distribution, for each DBSCAN,
@@ -1445,28 +1500,55 @@ class myDBSCAN(object):
 		tb8Den=self.removeAllEdges(tb8Den)
 		tb16Den=self.removeAllEdges(tb16Den)
 
+		if onlyLocal:
+			tb8Den = self.removePerseusList(tb8Den)
+			tb16Den = self.removePerseusList(tb16Den)
+
+
 
 		algDB="DBSCAN"
 		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
 		tb8DB=self.removeAllEdges(tb8DB)
 		tb16DB=self.removeAllEdges(tb16DB)
+		if onlyLocal:
+			tb8DB = self.removePerseusList(tb8DB)
+			tb16DB = self.removePerseusList(tb16DB)
+
+
 
 		algSCI="SCIMES"
 		tb8SCI,tb16SCI,label8SCI,label16SCI,sigmaListSCI=self.getTBList(algorithm= algSCI )
 		tb8SCI=self.removeAllEdges(tb8SCI)
 		tb16SCI=self.removeAllEdges(tb16SCI)
 
+		if onlyLocal:
+			tb8SCI = self.removePerseusList(tb8SCI)
+			tb16SCI = self.removePerseusList(tb16SCI)
 
+
+			
 		fig=plt.figure(figsize=(8, 6))
 		rc('text', usetex=True )
 		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
 
 		#############   plot dendrogram
 		axDendro=fig.add_subplot(1,1,1)
 
 		alphaDendro , alphaDendroError = self.getAlphaList( tb16Den )
 
-		axDendro.errorbar(sigmaListDen, alphaDendro, yerr= alphaDendroError , c='g', marker='D', capsize=3, elinewidth=1.3, lw=1,label= algDendro  )
+		if onlyLocal:
+			axDendro.errorbar(sigmaListDen, alphaDendro, yerr= alphaDendroError , c='g', marker='D', capsize=3, elinewidth=1.3, lw=1, label= algDendro+r" ($|b|>1^{\circ}$)"  )
+		else:
+			axDendro.errorbar(sigmaListDen, alphaDendro, yerr= alphaDendroError , c='g', marker='D', capsize=3, elinewidth=1.3, lw=1, label= algDendro  )
 
 
 		axDendro.set_ylabel(r"$\alpha$ (area)")
@@ -1481,14 +1563,27 @@ class myDBSCAN(object):
 
 		alphaDB , alphaDBError = self.getAlphaList( tb16DB )
 
-		ebDBSCAN=axDendro.errorbar(sigmaListDB, alphaDB, yerr= alphaDBError , c='b', marker='^',linestyle=":", capsize=3, elinewidth=1.0, lw=1,label= algDB , markerfacecolor='none' )
+
+		if onlyLocal:
+			ebDBSCAN=axDendro.errorbar(sigmaListDB, alphaDB, yerr= alphaDBError , c='b', marker='^',linestyle=":", capsize=3, elinewidth=1.0, lw=1,label= algDB+r" ($|b|>1^{\circ}$)" , markerfacecolor='none' )
+
+		else:
+			ebDBSCAN=axDendro.errorbar(sigmaListDB, alphaDB, yerr= alphaDBError , c='b', marker='^',linestyle=":", capsize=3, elinewidth=1.0, lw=1,label= algDB , markerfacecolor='none' )
+
+
+
 		ebDBSCAN[-1][0].set_linestyle(':')
 
 		##########plot SCIMES
 
 		alphaSCI , alphaSCIError = self.getAlphaList( tb16SCI )
 
-		ebSCISCAN=axDendro.errorbar(sigmaListSCI, alphaSCI, yerr= alphaSCIError , c='purple', marker='s', linestyle="--", capsize=3, elinewidth=1.0, lw=1,label= algSCI,  markerfacecolor='none' )
+
+		if onlyLocal:
+			ebSCISCAN=axDendro.errorbar(sigmaListSCI, alphaSCI, yerr= alphaSCIError , c='purple', marker='s', linestyle="--", capsize=3, elinewidth=1.0, lw=1,label= algSCI +r" ($|b|>1^{\circ}$)" ,  markerfacecolor='none' )
+		else:
+			ebSCISCAN=axDendro.errorbar(sigmaListSCI, alphaSCI, yerr= alphaSCIError , c='purple', marker='s', linestyle="--", capsize=3, elinewidth=1.0, lw=1,label= algSCI ,  markerfacecolor='none' )
+
 		ebSCISCAN[-1][0].set_linestyle('--')
 		plt.xticks( [2,3,4,5,6,7],["2 (1.0 K)", "3 (1.5 K)" , "4 (2.0 K)" , "5 (2.5 K)" , "6 (3.0 K)" , "7 (3.5 K)"    ] )
 
@@ -1505,13 +1600,24 @@ class myDBSCAN(object):
 
 		print "The mean alpha is {:.2f}, error is {:.2f}".format(alphaMean,errorAlpha )
 
-		axDendro.plot([min(sigmaListDB),max(sigmaListDB)],  [alphaMean, alphaMean],'--', color='black', lw=1 )
+		labelAverage=r"{:.2f}$\pm${:.2f}".format(alphaMean, errorAlpha  )
+		axDendro.plot([min(sigmaListDB),max(sigmaListDB)],  [alphaMean, alphaMean],'--', color='black', lw=1,label=labelAverage )
 
 		axDendro.legend(loc=1 )
 
+
+
+
+
 		fig.tight_layout()
-		plt.savefig( "compareParaAlpha.pdf"  ,  bbox_inches='tight')
-		plt.savefig( "compareParaAlpha.png"  ,  bbox_inches='tight',dpi=300)
+
+		if onlyLocal:
+			plt.savefig( "compareParaAlphaOnlyLocal.pdf"  ,  bbox_inches='tight')
+			plt.savefig( "compareParaAlphaOnlyLocal.png"  ,  bbox_inches='tight',dpi=300)
+
+		else:
+			plt.savefig( "compareParaAlpha.pdf"  ,  bbox_inches='tight')
+			plt.savefig( "compareParaAlpha.png"  ,  bbox_inches='tight',dpi=300)
 
 
 
@@ -1550,7 +1656,14 @@ class myDBSCAN(object):
 
 		fig=plt.figure(figsize=(22,8))
 		rc('text', usetex=True )
-		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+		rc('font', **{'family': 'sans-serif',  'size'   : 15,  'serif': ['Helvetica'] })
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
 
 		#plot dendrogram
 		axDendro=fig.add_subplot(1,3,1)
@@ -1759,7 +1872,17 @@ class myDBSCAN(object):
 
 		fig=plt.figure(figsize=(8,6))
 		rc('text', usetex=True )
-		rc('font', **{'family': 'sans-serif',  'size'   : 10,  'serif': ['Helvetica'] })
+		rc('font', **{'family': 'sans-serif',  'size'   : 10.5,  'serif': ['Helvetica'] })
+
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
+
 
 		#plot dendrogram
 		axDendro=fig.add_subplot(1,1,1)
@@ -1767,8 +1890,8 @@ class myDBSCAN(object):
 		#self.drawTotalFlux(axDendro,tb8Den,tb16Den, label8Den,label16Den, sigmaListDen)
 
 		#Nlist8Den=self.getTotalFluxList(tb8List)
-		fluxList16Den=self.getTotalFluxList(tb16Den)
-		axDendro.plot(sigmaListDen,fluxList16Den,'D-' , color="green",markersize=4, lw=1.0,label="Flux (dendrogram)" )
+		fluxList16Den=self.getTotalFluxList(tb8Den)
+		axDendro.plot(sigmaListDen,fluxList16Den,'D-' , color="green",markersize=4, lw=1.0,label="Flux (dendrogram)",markerfacecolor='none' )
 
 
 		axDendro.set_ylabel(r"Flux ($\rm K\ km\ s$$^{-1}$ $\Omega_\mathrm{A}$)")
@@ -1777,13 +1900,13 @@ class myDBSCAN(object):
 
 
 		#plot DBSCAN
-		fluxList16DB=self.getTotalFluxList( tb16DB )
+		fluxList16DB=self.getTotalFluxList( tb8DB )
 
 		axDendro.plot(sigmaListDB,fluxList16DB,'^--' ,linestyle=':', color="blue",markersize=3, lw=1.0,label= "Flux (DBSCAN)", markerfacecolor='none' )
 
 
 		#plot SCIMES
-		fluxList16SCI=self.getTotalFluxList( tb16SCI )
+		fluxList16SCI=self.getTotalFluxList( tb8SCI )
 
 		axDendro.plot(sigmaListSCI,fluxList16SCI,'s--' ,  color="purple",markersize=3, lw=1.0,label= "Flux (SCIMES)", markerfacecolor='none' )
 
@@ -1830,7 +1953,7 @@ class myDBSCAN(object):
 
 		axRatio = axDendro.twinx()  # instantiate a second axes that shares the same x-axis
 
-		axRatio.plot(sigmaListDen, totalFluxRatioDendro,'D-',color=tabBlue ,  markersize=3, lw=1.0, label= "Ratio to the total flux (dendrogram)"   )
+		axRatio.plot(sigmaListDen, totalFluxRatioDendro,'D-',color=tabBlue ,  markersize=3, lw=1.0, label= "Ratio to the total flux (dendrogram)" , markerfacecolor='none' )
 
 		axRatio.plot(sigmaListDB, totalFluxRatioDB,'^--',linestyle=':',color= tabBlue ,  markersize=3, lw=1.0,label= "Ratio to  the total flux (DBSCAN)",  markerfacecolor='none' )
 
@@ -2004,8 +2127,14 @@ class myDBSCAN(object):
 
 		fig=plt.figure(figsize=(20,6))
 		rc('text', usetex=True )
-		rc('font', **{'family': 'sans-serif',  'size'   : 14.5,  'serif': ['Helvetica'] })
-
+		rc('font', **{'family': 'sans-serif',  'size'   : 16,  'serif': ['Helvetica'] })
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
 		#plot dendrogram
 		axDendro=fig.add_subplot(1,3,1)
 
@@ -2153,8 +2282,8 @@ class myDBSCAN(object):
 		Nlist16Den=self.getNList(tb16List)
 
 
-		ax.plot(sigmaListDen,Nlist8Den,'o-',label="min\_nPix = 8",color="blue",lw=1 , markersize=3 )
-		ax.plot(sigmaListDen,Nlist16Den,'o-',label="min\_nPix = 16",color="green", lw=1, markersize=3 )
+		ax.plot(sigmaListDen,Nlist8Den,'o-',label="min\_npix = 8",color="blue",lw=1 , markersize=3 )
+		ax.plot(sigmaListDen,Nlist16Den,'o-',label="min\_npix = 16",color="green", lw=1, markersize=3 )
 
 
 
@@ -3263,6 +3392,16 @@ class myDBSCAN(object):
 		rc('text', usetex=True )
 		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
 
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
+
+
 		tbIndex1=0
 		tbIndex2=4
 		tbIndex3=8
@@ -3493,6 +3632,16 @@ class myDBSCAN(object):
 		rc('text', usetex=True )
 		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
 
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
+
+
 		#Dendrogram....
 		axDendro=fig.add_subplot(1,3,1)
 		#self.drawVelTBSingle(axDendro, tb16Den[2] , velEdges ,areaCenter,label= label16Den[2]  )
@@ -3643,6 +3792,229 @@ class myDBSCAN(object):
 		doDBSCAN.getCatFromLabelArray(G2650CO12FITS, labelFITS, doDBSCAN.TBModel, minPix=16, rms=7,   saveMarker=savename)
 
 
+	def removePerseusSingle(self,eachT,upTo=1  ):
+		"""
+		By default, upTo 0.5 degree
+		:param mcTB:
+		:return:
+		"""
+		#get upto pixel
+		data,head=doFITS.readFITS("G2650Local30.fits")
+
+		wcsCO= WCS(head )
+		_,indexLow,_ = wcsCO.wcs_world2pix(40,-upTo, 0 ,0 )
+		_,indexUp,_ = wcsCO.wcs_world2pix(40, upTo , 0 ,0 )
+
+
+
+		if np.max(eachT["y_cen"]) > 10: #pixel
+
+			select = np.logical_or(eachT["y_cen"] < indexLow, eachT["y_cen"]  > indexUp)
+			locateTB = eachT[select]
+
+
+		else:
+			select = np.logical_or(eachT["y_cen"] < -upTo, eachT["y_cen"] > upTo )
+			locateTB = eachT[select]
+
+		return locateTB
+
+	def removePerseusList(self,TBList):
+
+		newList=[]
+
+		for eachT in TBList:
+			newList.append( self.removePerseusSingle(eachT)  )
+
+		return newList
+
+
+
+
+	def physicalAreaDistributionLocal(self): # ###
+		"""
+		#draw the physical Area Distribution distribution of molecular clouds
+		:return:
+		"""
+
+		#9pixels at 1500 pc
+		completeArea=0.428 #36824657505895 #pc^2 should equal to
+
+		#use 3,5,7#because they all have observed area
+
+		algDendro = "Dendrogram"
+		tb8Den, tb16Den, label8Den, label16Den, sigmaListDen = self.getTBList(algorithm=algDendro)
+		tb8Den = self.removeAllEdges(tb8Den)
+		tb16Den = self.removeAllEdges(tb16Den)
+
+		tb8Den = self.removePerseusList(tb8Den)
+		tb16Den = self.removePerseusList(tb16Den)
+
+
+
+
+		algDB = "DBSCAN"
+		tb8DB, tb16DB, label8DB, label16DB, sigmaListDB = self.getTBList(algorithm=algDB)
+		tb8DB = self.removeAllEdges(tb8DB)
+		tb16DB = self.removeAllEdges(tb16DB)
+
+		tb8DB = self.removePerseusList(tb8DB)
+		tb16DB = self.removePerseusList(tb16DB)
+
+
+
+
+
+		algSCI = "SCIMES"
+		tb8SCI, tb16SCI, label8SCI, label16SCI, sigmaListSCI = self.getTBList(algorithm=algSCI)
+		tb8SCI = self.removeAllEdges(tb8SCI)
+		tb16SCI = self.removeAllEdges(tb16SCI)
+
+
+		tb8SCI = self.removePerseusList(tb8SCI)
+		tb16SCI = self.removePerseusList(tb16SCI)
+
+
+
+
+		index1=0
+		index2=4
+		index3=8
+
+		## physicalEdges  physicalCenter
+		physicalEdges=np.linspace(0,100,1000) #square pc^2
+		physicalCenter=self.getEdgeCenter( physicalEdges )
+
+
+		velEdges = np.linspace(0, 40, 200)
+		areaCenter = self.getEdgeCenter(velEdges)
+
+		fig = plt.figure(figsize=(16, 5))
+		rc('text', usetex=True)
+		rc('font', **{'family': 'sans-serif', 'size': 13, 'serif': ['Helvetica']})
+
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
+
+
+		# Dendrogram....
+		axDendro = fig.add_subplot(1, 3, 1)
+		# self.drawVelTBSingle(axDendro, tb16Den[2] , velEdges ,areaCenter,label= label16Den[2]  )
+		# self.drawVelTBSingle(axDendro,  tb16Den[6] , velEdges ,areaCenter,label= label16Den[6]   )
+		# self.drawVelTBSingle(axDendro,  tb16Den[10] , velEdges ,areaCenter,label= label16Den[10]   )
+
+		# to be modified
+		tbDendro2 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/minV2minP8dendroMannualCat.fit")
+		tbDendro6 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/minV4minP8dendroMannualCat.fit")
+		tbDendro10 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/minV6minP8dendroMannualCat.fit")
+
+		tbDendro2, tbDendro6, tbDendro10 = self.removeAllEdges([tbDendro2, tbDendro6, tbDendro10])
+		tbDendro2, tbDendro6, tbDendro10 = self.removePerseusList([tbDendro2, tbDendro6, tbDendro10])
+
+
+
+
+		color2 = self.drawPhysicalAreaSingle(axDendro, tbDendro2, physicalEdges, physicalCenter, completeArea,label=label8Den[index1])
+		color6 = self.drawPhysicalAreaSingle(axDendro, tbDendro6, physicalEdges, physicalCenter,completeArea, label=label8Den[index2])
+		color10 = self.drawPhysicalAreaSingle(axDendro, tbDendro10, physicalEdges, physicalCenter, completeArea, label=label8Den[index3])
+
+
+
+		l = axDendro.legend(loc=1)
+		colorsDendro = [color2, color6, color10]
+		for text, color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+
+		#draw complete line
+		axDendro.plot( [completeArea,completeArea],[2,2000],'--',color='black', lw=1  )
+
+
+		at = AnchoredText("Dendrogram ($|b|>1^{\circ}$)", loc=3, frameon=False, pad=0.2)
+		axDendro.add_artist(at)
+
+
+		xLabelStr= r"Phyiscal area ($\rm pc^{2}$)"
+		axDendro.set_ylabel(r"Number of trunks")
+
+		axDendro.set_xlabel( xLabelStr )
+
+
+		axDendro.set_yscale('log')
+		axDendro.set_xscale('log')
+
+
+		# DBSCAN........
+		axDBSCAN = fig.add_subplot(1, 3, 2, sharex=axDendro, sharey=axDendro)
+
+
+
+		color2 = self.drawPhysicalAreaSingle(axDBSCAN, tb8DB[index1], physicalEdges, physicalCenter, completeArea,label=label8DB[index1])
+		color6 = self.drawPhysicalAreaSingle(axDBSCAN, tb8DB[index2], physicalEdges, physicalCenter,completeArea, label=label8DB[index2])
+		color10 = self.drawPhysicalAreaSingle(axDBSCAN, tb8DB[index3], physicalEdges, physicalCenter, completeArea, label=label8DB[index3])
+
+
+		l = axDBSCAN.legend(loc=1)
+		colorsDendro = [color2, color6, color10]
+		for text, color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+		at = AnchoredText(r"DBSCAN ($|b|>1^{\circ}$)", loc=3, frameon=False, pad=0.2)
+		axDBSCAN.add_artist(at)
+		# axDBSCAN.set_xlabel(r"Peak values (K)")
+		axDBSCAN.set_xlabel( xLabelStr )
+		axDBSCAN.set_ylabel(r"Number of trunks")
+		axDBSCAN.plot( [completeArea,completeArea],[2,2000],'--',color='black', lw=1  )
+
+
+		##SCIMES
+
+		axSCIMES = fig.add_subplot(1, 3, 3, sharex=axDendro, sharey=axDendro)
+
+		tbSCIMES2 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/minV4P8scimesMannual.fit")
+		tbSCIMES6 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/minV6P8scimesMannual.fit")
+		tbSCIMES10 = Table.read("/home/qzyan/WORK/myDownloads/MWISPcloud/minV2P8scimesMannual.fit")
+
+		tbSCIMES2, tbSCIMES6, tbSCIMES10 = self.removeAllEdges([tbSCIMES2, tbSCIMES6, tbSCIMES10])
+		tbSCIMES2, tbSCIMES6, tbSCIMES10 = self.removePerseusList([tbSCIMES2, tbSCIMES6, tbSCIMES10])
+
+
+		color2 = self.drawPhysicalAreaSingle(axSCIMES, tbSCIMES2, physicalEdges, physicalCenter, completeArea,label=label8SCI[index1])
+		color6 = self.drawPhysicalAreaSingle(axSCIMES, tbSCIMES6 , physicalEdges, physicalCenter,completeArea, label=label8SCI[index2])
+		color10 = self.drawPhysicalAreaSingle(axSCIMES,  tbSCIMES10 , physicalEdges, physicalCenter, completeArea, label=label8SCI[index3])
+
+
+
+		l = axSCIMES.legend(loc=1)
+
+		colorsDendro = [color2, color6, color10]
+		for text, color in zip(l.get_texts(), colorsDendro):
+			text.set_color(color)
+
+		at = AnchoredText("SCIMES ($|b|>1^{\circ}$)", loc=3, frameon=False, pad=0.2)
+		axSCIMES.add_artist(at)
+
+
+
+		axSCIMES.set_ylabel(r"Number of clusters")
+		axSCIMES.set_xlabel(xLabelStr)
+		axSCIMES.plot( [completeArea,completeArea],[2,2000],'--',color='black', lw=1  )
+		axSCIMES.set_yscale('log')
+		axSCIMES.set_xscale('log')
+
+
+
+		fig.tight_layout()
+		plt.savefig("physicalAreaDistributeOnlyLocal.pdf", bbox_inches='tight')
+		plt.savefig("physicalAreaDistributeOnlyLocal.png", bbox_inches='tight', dpi=300)
+
+
 
 
 	def physicalAreaDistribution(self):
@@ -3686,6 +4058,15 @@ class myDBSCAN(object):
 		fig = plt.figure(figsize=(16, 5))
 		rc('text', usetex=True)
 		rc('font', **{'family': 'sans-serif', 'size': 13, 'serif': ['Helvetica']})
+
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
 
 		# Dendrogram....
 		axDendro = fig.add_subplot(1, 3, 1)
@@ -3793,16 +4174,22 @@ class myDBSCAN(object):
 		plt.savefig("physicalAreaDistribute.pdf", bbox_inches='tight')
 		plt.savefig("physicalAreaDistribute.png", bbox_inches='tight', dpi=300)
 
+
+
+
+
+
+
 	def momentAllWithMaskedCO(self,maskedCOFITS):
 
+
 		data,head=myFITS.readFITS( maskedCOFITS )
-
 		intData=np.sum(data,axis=0)*0.2 #K km/s
-
 		fits.writeto( "dendroMaskedInt.fits", intData, header=head,overwrite =True )
 
 
-	def drawOverallMoment(self,fitsFile="normalInt.fits"):
+
+	def drawOverallMoment(self, fitsFile="normalInt.fits" ):
 		"""
 		draw a simple map for over all moment of local molecular clouds
 		:return:
@@ -3825,7 +4212,13 @@ class myDBSCAN(object):
 		#rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
 
 		rc('text', usetex=True)
-
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
 		# grid helper
 		grid_helper = pywcsgrid2.GridHelper(wcs=wcsCO)
 
@@ -3861,7 +4254,7 @@ class myDBSCAN(object):
 		main_axes.axis[:].major_ticks.set_color("purple")
 		cb=cb_axes.colorbar(im)
 		#cb_axes.axis["right"].toggle(ticklabels=True)
-		cb_axes.set_ylabel(r"$\rm K \ km\ s^{-1}$")
+		cb_axes.set_ylabel(r"K km s$^{-1}$")
 		cb_axes.set_xlabel("")
 
 		#print dir(cb_axes.axes)
@@ -3877,16 +4270,20 @@ class myDBSCAN(object):
 		#add well-known star forming regions
 
 		#W40 LBN 028.77+03.43
-		fontAlpha=0.8
-		fontSize=12
-		fontColor="black"
-
+		fontAlpha=0.75
+		fontSize=14
+		fontColor="white"
+		lw=1.2
+		import matplotlib.patheffects as path_effects
 		#W40
-		main_axes["gal"].text(28.77, 03.43, "W40",  color=fontColor, alpha=fontAlpha,fontsize=fontSize ,horizontalalignment='center',   verticalalignment='center' )
-
+		#main_axes["gal"].text(28.77, 03.43, r"\textbf{W40}",  color='white', alpha=fontAlpha,fontsize=fontSize ,horizontalalignment='center',   verticalalignment='center' )
+		#main_axes["gal"].text(28.77, 03.43, "W40",  color=fontColor, alpha=fontAlpha,fontsize=fontSize ,horizontalalignment='center',   verticalalignment='center' )
+		text=main_axes["gal"].text(28.77, 03.43, "W40",  color=fontColor, alpha=fontAlpha,fontsize=fontSize ,horizontalalignment='center',   verticalalignment='center' )
+		text.set_path_effects([path_effects.Stroke(linewidth=lw, foreground="black"), path_effects.Normal()])
 
 		#W49  G043.2+0.01  W49 2013ApJ...775...79Z
-		main_axes["gal"].text(43.2, 0.01, "W49",  color=fontColor, alpha=fontAlpha,fontsize=fontSize,horizontalalignment='center',   verticalalignment='center' )
+		text=main_axes["gal"].text(43.2, 0.01, "W49",  color=fontColor, alpha=fontAlpha,fontsize=fontSize,horizontalalignment='center',   verticalalignment='center' )
+		text.set_path_effects([path_effects.Stroke(linewidth=lw, foreground="black"), path_effects.Normal()])
 
 		##G032.79+00.19(H)
 		#main_axes["gal"].text(32.79,   0.19 , "1",  color=fontColor, alpha=fontAlpha,fontsize=fontSize,horizontalalignment='center',   verticalalignment='center' )
@@ -3900,27 +4297,34 @@ class myDBSCAN(object):
 		startB=0.0
 		dL=startL-30.5
 
-		main_axes["gal"].text(startL , startB ,  "Aquila Rift",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center', rotation = rA,  verticalalignment='center' )
+		text=main_axes["gal"].text(startL , startB ,  "Aquila Rift",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center', rotation = rA,  verticalalignment='center' )
+		text.set_path_effects([path_effects.Stroke(linewidth=lw, foreground="black"), path_effects.Normal()])
 
 
-		main_axes["gal"].text(startL-dL , startB+dL*np.tan(np.deg2rad(rA)) ,  "Aquila Rift",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center', rotation = rA,  verticalalignment='center' )
+		text=main_axes["gal"].text(startL-dL , startB+dL*np.tan(np.deg2rad(rA)) ,  "Aquila Rift",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center', rotation = rA,  verticalalignment='center' )
+		text.set_path_effects([path_effects.Stroke(linewidth=lw, foreground="black"), path_effects.Normal()])
+
 		dL2=startL-34.5
-		main_axes["gal"].text(startL-dL2 , startB+dL2*np.tan(np.deg2rad(rA)) ,  "Aquila Rift",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center', rotation = rA,  verticalalignment='center' )
+		text=main_axes["gal"].text(startL-dL2 , startB+dL2*np.tan(np.deg2rad(rA)) ,  "Aquila Rift",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center', rotation = rA,  verticalalignment='center' )
+		text.set_path_effects([path_effects.Stroke(linewidth=lw, foreground="black"), path_effects.Normal()])
 
 		#Serpens NE
-		main_axes["gal"].text(31.5768569 , 3.0808449 ,  "Serpens NE",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+		text=main_axes["gal"].text(31.5768569 , 3.0808449 ,  "Serpens NE",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+		text.set_path_effects([path_effects.Stroke(linewidth=lw, foreground="black"), path_effects.Normal()])
 
 		   
 
 		#LDN 566
-		main_axes["gal"].text( 030.3739 , -01.0749,  "LDN 566",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
-
-
+		#main_axes["gal"].text( 030.3739 , -01.0749,  r"\textbf{LDN 566}",  color='black', alpha=fontAlpha,fontsize=fontSize , ha='center',    va='center' )
+		text=main_axes["gal"].text( 030.3739 , -01.0749,  "LDN 566",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , ha='center',    va='center' )
+		text.set_path_effects([path_effects.Stroke(linewidth=lw, foreground="black"), path_effects.Normal()])
 		#LDN 617
-		main_axes["gal"].text( 34.5724  ,-00.862,  "LDN 617",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+		text=main_axes["gal"].text( 34.5724  ,-00.862,  "LDN 617",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+		text.set_path_effects([path_effects.Stroke(linewidth=lw, foreground="black"), path_effects.Normal()])
 
 		#LDN 673
-		main_axes["gal"].text( 46.263 , -01.3303,  "LDN 673",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+		text=main_axes["gal"].text( 46.263 , -01.3303,  "LDN 673",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
+		text.set_path_effects([path_effects.Stroke(linewidth=lw, foreground="black"), path_effects.Normal()])
 
 		##LDN 603
 		#main_axes["gal"].text( 33.163 , +01.496 ,  "LDN 603",  color=fontColor, alpha=fontAlpha,fontsize=fontSize , horizontalalignment='center',    verticalalignment='center' )
@@ -3956,6 +4360,32 @@ class myDBSCAN(object):
 
 		######################### two
 
+
+		if 1:#Galactic longgitude
+			xLocs = np.arange(26, 50,2)
+			xLabels = map(int, xLocs)
+			xLabels = map(str, xLabels)
+
+			main_axes.set_ticklabel1_type("manual", locs=xLocs, labels=xLabels)
+
+			main_axes.set_xlabel(r"Galactic Longitude ($^{\circ}$)")
+
+		if 1:#Galactic latitudes
+			xLocs = np.arange(-5,6,1)
+			xLabels = map(int, xLocs)
+			xLabels = map(str, xLabels)
+
+			main_axes.set_ticklabel2_type("manual", locs=xLocs, labels=xLabels)
+
+			main_axes.set_ylabel(r"Galactic Latitude ($^{\circ}$)")
+
+		#at = AnchoredText(algDendro, loc=3, frameon=False)
+		#axDendro.add_artist(at)
+		#at = AnchoredText(r"$^{12}\mathrm{CO}~(J=1\rightarrow0)$", loc=4, frameon=True,  prop={"color": "black","size":13 },pad=0.1)
+		#main_axes.add_artist(at )
+
+		text=main_axes["gal"].text( 26 ,4.2,  r"$^{12}\mathrm{CO}~(J=1\rightarrow0)$",  color="black", alpha=fontAlpha,fontsize=8.3 , ha='center',    va='center',rotation=90 )
+		#text.set_path_effects([path_effects.Stroke(linewidth=2, foreground="black"), path_effects.Normal()])
 
 
 
@@ -3994,10 +4424,34 @@ class myDBSCAN(object):
 		fig = plt.figure(figsize=(10, 1.35 ))
 		#fig = plt.figure( )
 
-		rc('font', **{'family': 'sans-serif', 'serif': ['Helvetica'],"size":9})
-		# rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
-
+		rc('font', **{'family': 'sans-serif', 'serif': ['Helvetica'],"size":11.5,"weight":20})
 		rc('text', usetex=True)
+		#rc('mathtext', fontset='stixsans')
+		#rc('text.latex', preamble=r'\usepackage{cmbright}')
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+		#mpl.rcParams['text.usetex'] = True
+		#mpl.rcParams['text.latex.preamble'] = [r'\usepackage[cm]{sfmath}']
+		#mpl.rcParams['font.family'] = 'scans-serif'
+		#mpl.rcParams['font.scans-serif'] = 'cm'
+
+
+		#rc('text.latex', preamble=r'\renewcommand{\familydefault}{\sfdefault}')
+		#rc('text.latex', preamble=r'\renewcommand{\familydefault}{\sfdefault} \usepackage{helvet}')
+
+
+
+		#mpl.rcParams['text.usetex'] = True
+		#mpl.rcParams['text.latex.preamble'] = [r'\usepackage[cm]{sfmath}']
+		#mpl.rcParams['font.family'] = 'sans-serif'
+		#mpl.rcParams['font.sans-serif'] = 'cm'
+
+
 		# readfits
 
 		# pvData=pvData*30./3600. #muliple degree
@@ -4018,7 +4472,7 @@ class myDBSCAN(object):
 
 		# axPV.set_facecolor('black')
 		axPV.set_facecolor('silver')
-		axPV.set_xlabel(r"$l$($^{\circ}$)")
+		#axPV.set_xlabel(r"$l$($^{\circ}$)")
 
 		cb_axes = grid.cbar_axes[0]
 
@@ -4045,7 +4499,7 @@ class myDBSCAN(object):
 		cb_axes.colorbar(imCO12, ticks=ticksP)
 		cb_axes.set_yticklabels(labels)
 
-		cb_axes.set_ylabel(r"$\rm K$")
+		cb_axes.set_ylabel(r"K")
 
 		if 1:  # velocity
 			vRange = [0, 100]
@@ -4057,16 +4511,16 @@ class myDBSCAN(object):
 			yLabels = map(str, yLabels)
 
 			axPV.set_ticklabel2_type("manual", locs=yLocs * 1000., labels=yLabels)
-			axPV.set_ylabel(r"$V_{\rm LSR}\left(\rm km \ s^{-1}\right)$")
+			axPV.set_ylabel(r"$V_{\rm LSR}$ (km s$^{-1}$)")
 
 		if 1:#Galactic latitudes
-			xLocs = np.arange(27, 51,3)
+			xLocs = np.arange(26, 50,2)
 			xLabels = map(int, xLocs)
 			xLabels = map(str, xLabels)
 
 			axPV.set_ticklabel1_type("manual", locs=xLocs, labels=xLabels)
-
-			axPV.set_xlabel(r"$l\left(^{\circ}\right)$")
+			axPV.set_xlabel(r"Galactic Longitude ($^{\circ}$)")
+			#axPV.set_xlabel(r"$l\left(^{\circ}\right)$")
 
 		axPV.axis[:].major_ticks.set_color("w")
 		axPV.set_ylim(v0, v1)
@@ -4172,6 +4626,14 @@ class myDBSCAN(object):
 		# rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
 
 		rc('text', usetex=True)
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
 
 		axCO= pywcsgrid2.subplot(221, header=   WCSCrop  )
 
@@ -4192,6 +4654,8 @@ class myDBSCAN(object):
 
 		axCO.set_ticklabel_type("absdeg", "absdeg")
 		axCO.axis[:].major_ticks.set_color("w")
+		axCO.set_xlabel(r"Galactic Longitude ($^{\circ}$)")
+		axCO.set_ylabel(r"Galactic Latitude ($^{\circ}$)")
 
 		###dendrogram
 
@@ -4205,6 +4669,8 @@ class myDBSCAN(object):
 		axDendrogram.add_artist(at)
 		axDendrogram.set_ticklabel_type("absdeg", "absdeg")
 		axDendrogram.axis[:].major_ticks.set_color("w")
+		axDendrogram.set_xlabel(r"Galactic Longitude ($^{\circ}$)")
+		axDendrogram.set_ylabel(r"Galactic Latitude ($^{\circ}$)")
 
 		###DBSCAN
 		#labelDBSCAN, labelHead = self.getIntLabel(cropDBSCAN)
@@ -4217,6 +4683,11 @@ class myDBSCAN(object):
 		axDBSCAN.add_artist(at)
 		axDBSCAN.set_ticklabel_type("absdeg", "absdeg")
 		axDBSCAN.axis[:].major_ticks.set_color("w")
+
+		axDBSCAN.set_xlabel(r"Galactic Longitude ($^{\circ}$)")
+		axDBSCAN.set_ylabel(r"Galactic Latitude ($^{\circ}$)")
+
+
 
 		##SCIMES
 		#labelSCIMES, labelHead = self.getIntLabel(cropSCIMES)
@@ -4234,6 +4705,12 @@ class myDBSCAN(object):
 
 		axSCIMES.set_xlim(lIndexRange)
 		axSCIMES.set_ylim(bIndexRange)
+
+		axSCIMES.set_xlabel(r"Galactic Longitude ($^{\circ}$)")
+		axSCIMES.set_ylabel(r"Galactic Latitude ($^{\circ}$)")
+
+
+
 
 		fig.tight_layout(pad=0.2)
 
@@ -4656,7 +5133,16 @@ class myDBSCAN(object):
 		fig = plt.figure(figsize=(18, 15 ))
 
 		rc('text', usetex=True)
-		rc('font', **{'family': 'sans-serif', 'size': 18, 'serif': ['Helvetica']})
+		rc('font', **{'family': 'sans-serif', 'size': 22, 'serif': ['Helvetica']})
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
+
 
 		yLabelStr=  r"Brightness temperature ($\rm K$)"
 		xLabelStr= r"$V_{\rm LSR}$ ($\rm km\ s^{-1}$)" 
@@ -4734,9 +5220,9 @@ class myDBSCAN(object):
 
 		ax1.step(V1, T1, color='b' )
 		if first:
-			at = AnchoredText(r"$\left(l,\ b\right)=\left({:.2f}^\circ, \ {:.2f}^\circ\right)$".format( xCen,yCen), loc=2, frameon=False)
+			at = AnchoredText(r"$\left(l,\ b\right)=\left({:.2f}^\circ, \ {:.2f}^\circ\right)$".format( xCen,yCen), loc=1, frameon=False)
 		else:
-			at = AnchoredText(r"$\left({:.2f}^\circ, \ {:.2f}^\circ\right)$".format( xCen,yCen), loc=2, frameon=False)
+			at = AnchoredText(r"$\left({:.2f}^\circ, \ {:.2f}^\circ\right)$".format( xCen,yCen), loc=1, frameon=False)
 
 		ax1.add_artist(at)
 
@@ -5211,6 +5697,126 @@ class myDBSCAN(object):
 		plt.savefig("contourDisClouds.pdf", bbox_inches='tight')
 		plt.savefig("contourDisClouds.png", bbox_inches='tight', dpi=300)
 
+
+	def testAngularAndLineWith(self):
+		"""
+		
+		:return:
+		"""
+		algDendro="Dendrogram"
+		tb8Den,tb16Den,label8Den,label16Den,sigmaListDen=self.getTBList(algorithm=algDendro)
+		tb8Den=self.removeAllEdges(tb8Den)
+		tb16Den=self.removeAllEdges(tb16Den)
+
+
+		algDB="DBSCAN"
+		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
+		tb8DB=self.removeAllEdges(tb8DB)
+		tb16DB=self.removeAllEdges(tb16DB)
+
+		algSCI="SCIMES"
+		tb8SCI,tb16SCI,label8SCI,label16SCI,sigmaListSCI=self.getTBList(algorithm= algSCI )
+		tb8SCI=self.removeAllEdges(tb8SCI)
+		tb16SCI=self.removeAllEdges(tb16SCI)
+
+		fig = plt.figure(figsize=(12, 6))
+		ax1 = fig.add_subplot(1, 2, 1)
+		# fig, axs = plt.subplots(nrows=1, ncols=2,  figsize=(12,6),sharex=True)
+		rc('text', usetex=True)
+		rc('font', **{'family': 'sans-serif', 'size': 13, 'serif': ['Helvetica']})
+
+		ax1.scatter( tb8Den[0]["area_exact"],  tb8Den[0]["v_rms"], s=9,color='blue',label=r"2$\sigma$, P8" )
+
+		ax1.scatter( tb8Den[-1]["area_exact"],  tb8Den[-1]["v_rms"], s=9,color='red',label=r"7$\sigma$, P8" )
+
+		ax1.legend()
+
+
+
+		ax1.set_xlim(0,1000)
+		plt.savefig("testFarComponnents.png" , bbox_inches='tight')
+
+	def testLargestFluxRatio(self):
+		"""
+		print the largest ratio of flux
+
+		
+		:return:
+		"""
+		algDendro="Dendrogram"
+		tb8Den,tb16Den,label8Den,label16Den,sigmaListDen=self.getTBList(algorithm=algDendro)
+		tb8Den=self.removeAllEdges(tb8Den)
+		tb16Den=self.removeAllEdges(tb16Den)
+
+
+		algDB="DBSCAN"
+		tb8DB,tb16DB,label8DB,label16DB,sigmaListDB=self.getTBList(algorithm=algDB)
+		tb8DB=self.removeAllEdges(tb8DB)
+		tb16DB=self.removeAllEdges(tb16DB)
+
+		algSCI="SCIMES"
+		tb8SCI,tb16SCI,label8SCI,label16SCI,sigmaListSCI=self.getTBList(algorithm= algSCI )
+		tb8SCI=self.removeAllEdges(tb8SCI)
+		tb16SCI=self.removeAllEdges(tb16SCI)
+
+
+		#ratio of clouds with 0.5 degree of the Galactic latitudes, which is used to estimate the conamination of Perseus arm
+		#0.5 672
+		#-0.5, 552
+
+		print algDendro
+		for eachT in tb8Den:
+			print "Ratio of max flux",np.max( eachT["flux"])/np.sum(   eachT["flux"] )
+
+			if np.max( eachT["y_cen"] )>10:
+
+				select= np.logical_and( eachT["y_cen"]>=552, eachT["y_cen"]<= 672  )
+				perSeusTB=eachT[select]
+				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
+
+
+			else:
+				select= np.logical_and( eachT["y_cen"]>=-0.5, eachT["y_cen"]<= 0.5  )
+				perSeusTB=eachT[select]
+				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
+			#print eachT["y_cen"].unit
+
+
+
+		for eachT in tb8DB:
+			print np.max( eachT["sum"])/np.sum(   eachT["sum"] )
+
+
+			if np.max( eachT["y_cen"] )>10:
+
+				select= np.logical_and( eachT["y_cen"]>=552, eachT["y_cen"]<= 672  )
+				perSeusTB=eachT[select]
+				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
+
+
+			else:
+				select= np.logical_and( eachT["y_cen"]>=-0.5, eachT["y_cen"]<= 0.5  )
+				perSeusTB=eachT[select]
+				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
+			#print eachT["y_cen"].unit
+		print algSCI
+
+		for eachT in tb8SCI:
+			print np.max( eachT["flux"])/np.sum(   eachT["flux"] )
+
+			if np.max( eachT["y_cen"] )>10:
+
+				select= np.logical_and( eachT["y_cen"]>=552, eachT["y_cen"]<= 672  )
+				perSeusTB=eachT[select]
+				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
+
+
+			else:
+				select= np.logical_and( eachT["y_cen"]>=-0.5, eachT["y_cen"]<= 0.5  )
+				perSeusTB=eachT[select]
+				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
+			#print eachT["y_cen"].unit
+
 	def ZZZZZZ(self):
 		pass
 		"""
@@ -5237,19 +5843,33 @@ G2650MaskCO = "G2650CO12MaskedCO.fits"
 
 G2650MaskCODendro = "G2650CO12DendroMaskedCO.fits"
 
+if 1:
+	TBName="/home/qzyan/WORK/myDownloads/Q3/Q3LocalDendroCO12minV2minP8_dendroCatTrunk.fit"
+	doDBSCAN.drawAreaDistribute(TBName, region="Q3")
 
+	sys.exit()
+
+if 0:
+	doDBSCAN.testLargestFluxRatio()
+
+if 0:
+	doDBSCAN.testAngularAndLineWith()
+
+	#doDBSCAN.contourDisClouds()
+	sys.exit()
+
+
+
+#G2650Figures
 if 1:
 
-	doDBSCAN.contourDisClouds()
-	sys.exit()
-#G2650Figures
-if 0:
-	doDBSCAN.drawOverallMoment()
+	#doDBSCAN.drawOverallMoment()
 	#doDBSCAN.drawLV()
 
 	#doDBSCAN.numberDistribution()
 	#doDBSCAN.drawCheckCloudsOneChannel()
 	#doDBSCAN.drawSpectraExample()
+
 
 
 	#doDBSCAN.drawVeDistribution(useGauss=True)
@@ -5258,11 +5878,24 @@ if 0:
 	#doDBSCAN.areaDistribution()
 
 	#doDBSCAN.alphaDistribution()
+	#doDBSCAN.alphaDistribution( onlyLocal=True )
+
+
 	#doDBSCAN.fluxAlphaDistribution()
+	#doDBSCAN.fluxAlphaDistribution(onlyLocal=True)
+
+
 
 	#doDBSCAN.fluxDistribution()
+	doDBSCAN.totaFluxDistribution()
+	#doDBSCAN.physicalAreaDistribution()
 
-	#doDBSCAN.totaFluxDistribution() # add
+	#doDBSCAN.physicalAreaDistributionLocal()
+
+
+
+
+	
 
 	sys.exit()
 
