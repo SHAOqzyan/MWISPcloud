@@ -72,7 +72,7 @@ class MWcloud:
 		if saveName==None:
 			saveName=""
 
-		saveMark=saveName+"minV{}minP{}".format(minV,minPix)
+		saveMark=saveName+"minV{}minP{}minD{}".format(minV,minPix,minDelta)
 
 		treeFile= saveMark+"_Tree.txt"
 
@@ -394,8 +394,36 @@ class MWcloud:
 
 doCloud=MWcloud()
 
+if 1:
+	pass
 
-if 1: #get cluster Assign
+	doCloud.doDendro("hdbscanPart1CO.fits",minV=4, minPix= 8,doSCIMES=False  ,  minDelta= 3 ,   saveName="./testHdbscan/testMergePart1")
+	doCloud.doDendro("hdbscanPart2CO.fits",minV=4, minPix= 8,doSCIMES=False  ,  minDelta= 3 ,   saveName="./testHdbscan/testMergePart2")
+
+	sys.exit()
+
+#Dendrogram is too slow, not what we wanted
+
+if 0: #dendrogram, UMMC
+
+	doCloud.rms=1
+	doCloud.doDendro("/home/qzyan/WORK/projects/NewUrsaMajorPaper/UMMCCO12InRmsUnit.fits",minV=2, minPix= 8,doSCIMES=False  ,  minDelta= 3 ,   saveName="./UMMCFormal/UMMCCO12RMSUnit")
+	doCloud.doDendro("/home/qzyan/WORK/projects/NewUrsaMajorPaper/UMMCCO13InRmsUnit.fits",minV=2, minPix= 8,doSCIMES=False  ,  minDelta= 3 ,   saveName="./UMMCFormal/UMMCCO13RMSUnit")
+
+	sys.exit()
+
+
+
+if 0: #test dendro locate fo 30-60 km/s
+
+	doCloud.doDendro("/home/qzyan/WORK/myDownloads/MWISPcloud/G2650V3060/G2650V3060Sub.fits",minV=2, minPix= 8,doSCIMES=False  ,  minDelta= 3 ,   saveName="./G2650V3060/DendroTestV3060")
+	sys.exit()
+
+
+
+
+
+if 0: #get cluster Assign
 
 	#d = Dendrogram.load_from("minV2minP8_dendro.fits")
 	#doCloud.getAssignByTB(d, "ClusterCat_2_8Ve20.fit", "ClusterAsgn_2_8Ve20_mannual.fits" )

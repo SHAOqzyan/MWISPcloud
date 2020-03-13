@@ -27,6 +27,8 @@ from astropy import units as u
 from  myGAIA import GAIADIS
 import glob
 
+
+
 gaiaDis=GAIADIS()
 
 doFITS=myFITS()
@@ -55,6 +57,11 @@ class myDBSCAN(object):
 
 
 	rawCOFITS="G2650Local30.fits"
+
+	#
+	pixelArea=0.25 # arcmins
+
+
 
 	def __init__(self):
 		pass
@@ -153,9 +160,9 @@ class myDBSCAN(object):
 
 
 
-	def computeDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=16, connectivity=2 ,region="" , getMask=False,savePath="" ,mimicDendro=False):
+	def computeDBSCAN(self,COdata,COHead, min_sigma=2, min_pix=16, connectivity=2 ,region="" , getMask=False,savePath="" ,mimicDendro=False, rmsFITS=None,inputRMS=None):
 		"""
-		min_pix the the minimum adjacen number for are core point
+		min_pix the the minimum adjacen number for are core point, minPts
 		:param COdata:
 		:param min_sigma:
 		:param min_pix:
@@ -164,14 +171,31 @@ class myDBSCAN(object):
 		"""
 		#pass
 
+		if inputRMS==None:
+			minValue = min_sigma*self.rms
 
-		minValue = min_sigma*self.rms
+		else:
+			minValue = min_sigma* inputRMS
+
 
 
 		Nz,Ny,Nx  = COdata.shape
 		extendMask = np.zeros([Nz+2,Ny+2,Nx+2] ,dtype=int)
 
-		goodValues= COdata>=minValue
+
+		if rmsFITS==None:
+
+			goodValues= COdata>=minValue
+
+		else:
+			#pass,need to devide
+			rmsData,rmsHead = myFITS.readFITS(rmsFITS)
+			rmsCOData=COdata/rmsData
+			goodValues= rmsCOData>=min_sigma
+
+			#fits.writeto( "tttt.fits" , rmsCOData ,  header= COHead )
+
+			#aaaa
 
 		extendMask[1:-1,1:-1,1:-1] =  goodValues  #[COdata>=minValue]=1
 
@@ -350,7 +374,7 @@ class myDBSCAN(object):
 			self.getCatFromLabelArray(COFITS,saveLabel,self.TBModel,saveMarker=saveMarker,  minPix=min_pix,rms= min_sigma  )
 
 
-	def getCatFromLabelArray(self,  CO12FITS,labelFITS,TBModel,minPix=8,rms=2 ,saveMarker="", peakSigma=3,region=""):
+	def getCatFromLabelArray(self,  CO12FITS,labelFITS,TBModel,minPix=8,rms=2 ,   saveMarker="", peakSigma=3,region="",pureDBSCAN=False):
 		"""
 		Extract catalog from
 		:param labelArray:
@@ -362,7 +386,6 @@ class myDBSCAN(object):
 		#they are usefull to mask edge sources..., and to clean fits
 
 		if saveMarker=="":
-
 			saveName= region+"DBSCAN{}_P{}Cat.fit".format(rms,minPix)
 
 		else:
@@ -378,7 +401,23 @@ class myDBSCAN(object):
 
 		dataCluster , headCluster=myFITS.readFITS( labelFITS )
 
-		minV=np.nanmin(dataCluster[0])
+		#create a data cube to find points that satisfy to have three consecutive points, can we find them ?
+		minV = np.nanmin(dataCluster[0])
+
+
+		Nz, Ny, Nx = dataCluster.shape
+
+		#consecutiveData= np.zeros( ( Nz+2,Ny,Nx   )   )
+
+
+		#b= dataCluster> minV
+
+
+		#consecutiveData[1:-1]= dataCluster> minV
+		#doSum= consecutiveData[0:-2]+consecutiveData[1:-1]+ consecutiveData[2: ]
+		#consecutivepoints
+		#P3 = doSum>=3
+
 		wcsCloud=WCS( headCluster )
 
 		clusterIndex1D= np.where( dataCluster>minV )
@@ -394,26 +433,29 @@ class myDBSCAN(object):
 
 		newTB["pixN"]=newTB["v_rms"]
 		newTB["peak"]=newTB["v_rms"]
-		#newTB["linewidth"]=newTB["v_rms"] #equivelent linewidth
 
-		#newTB["peak2"]=newTB["v_rms"]  #the second largest peak
-		#dataClusterNew=np.zeros_like( dataCluster)
+		newTB["peakL"]=newTB["v_rms"]
+		newTB["peakB"]=newTB["v_rms"]
+		newTB["peakV"]=newTB["v_rms"]
 
-		# in the newCluster, number stars from 1, not zero
+		#newTB["Nchannel"]=newTB["v_rms"] #number of channels, whis is used to sellect
+
+		newTB["allChannel"]=newTB["v_rms"] # number channel involved
+		newTB["has22"]=newTB["v_rms"] # number channel involved
+
+
+		zeroProjection =  np.zeros( ( Ny , Nx  ) ) # one zero channel, used to get the projection area and
+		zeroProjectionExtend = np.zeros( ( Ny+1, Nx+1 ) )
+
+
 
 		idCol="_idx"
-
 
 
 		#count all clusters
 
 		#ids,count=np.unique(dataCluster,return_counts=True )
-		ids,count=np.unique(clusterValue1D,return_counts=True )
-
-		#GoodIDs=  ids[count>=minPix ]
-
-		#GoodCount = count[ count>=minPix  ]
-
+		ids,count=np.unique(  clusterValue1D,  return_counts=True  )
 		GoodIDs=ids
 		GoodCount=count
 		print "Total number of turnks? ",len(ids)
@@ -428,20 +470,15 @@ class myDBSCAN(object):
 		catTB=newTB.copy()
 		catTB.remove_row(0)
 
+		#zeroP
 
-
-		for i in  range(len(ids)) :
+		for i in  range(len(GoodIDs)) :
 
 			#i would be the newID
 			newID= GoodIDs[i]
-
-			if newID==minV: #this value is the masked values, for DBSCAN, is 0, and for dendrogram is 1.
-				continue
-
 			pixN=GoodCount[i]
 
 			newRow=newTB[0]
-
 
 			newRow[idCol] = newID
 
@@ -449,6 +486,7 @@ class myDBSCAN(object):
 
 			coValues=  dataCO[ cloudIndex ]
 
+			#P3Value= P3[cloudIndex] # used to find
 
 			#sortedCO=np.sort(coValues)
 			#peak = sortedCO[-1] #np.max( coValues)
@@ -458,7 +496,18 @@ class myDBSCAN(object):
 			cloudB=cloudIndex[1]
 			cloudL=cloudIndex[2]
 
+			peakIndex=coValues.argmax()
 
+			peakV = cloudV[peakIndex]
+			peakB = cloudB[peakIndex]
+			peakL = cloudL[peakIndex]
+
+			#get the exact peak position, which would be used to
+
+			projectIndex= tuple( [cloudB, cloudL ] )
+
+			zeroProjection[projectIndex] =1
+			zeroProjectionExtend[0:-1,0:-1]=zeroProjection
 
 			sumCO=np.sum( coValues )
 
@@ -468,17 +517,34 @@ class myDBSCAN(object):
 
 			#calculate the exact area
 
-			LBcore=zip(  cloudB ,    cloudL   )
+			#LBcore = zip(cloudB, cloudL)
+			#pixelsN= {}.fromkeys(LBcore).keys() #len( set(LBcore) )
+			#area_exact=len(pixelsN)*0.25 #arc mins square
+			area_exact= np.sum( zeroProjection )*0.25
 
-			pixelsN= {}.fromkeys(LBcore).keys() #len( set(LBcore) )
-			area_exact=len(pixelsN)*0.25 #arc mins square
+			#find the 2*2 patter
 
+			sum22= zeroProjectionExtend[0:-1,0:-1] +  zeroProjectionExtend[0:-1,1: ]+ zeroProjectionExtend[1: , 0 :-1]+zeroProjectionExtend[1: , 1: ]
+
+			#if any pixel>4:
+
+			if 4 in sum22:
+				newRow["has22"] = 1
+			else:
+				newRow["has22"] = 0
+
+			diffVs= np.unique(cloudV)
 
 			#dataClusterNew[cloudIndex] =newID
 
 			#save values
 			newRow["pixN"]= pixN
 			newRow["peak"]= peak
+
+			newRow["peakV"]= peakV
+			newRow["peakB"]= peakB
+			newRow["peakL"]= peakL
+
 			#newRow["peak2"]= peak2
 
 			newRow["sum"]= sumCO
@@ -495,7 +561,17 @@ class myDBSCAN(object):
 			newRow["l_rms"] = Lrms*dl
 			newRow["b_rms"] = Brms*dl
 
+			#_, Nchan=np.unique( cloudV, return_counts=True)
+
+			#newRow["Nchannel"] =    np.max(P3Value)# if there is a three consecutive spectra in the cloud
+			newRow["allChannel"] =   len( diffVs )
+
+
+
 			catTB.add_row(newRow)
+
+			zeroProjection[projectIndex] = 0
+			zeroProjectionExtend[ 0:-1,0:-1 ]=zeroProjection
 
 			pbar.update(i)
 
@@ -506,6 +582,8 @@ class myDBSCAN(object):
 
 		#fits.writeto(self.regionName+"NewCloud.fits", dataClusterNew,header=headCluster,overwrite=True   )
 		catTB.write( saveName ,overwrite=True)
+
+		return saveName
 
 	def getSumToFluxFactor(self):
 
@@ -855,6 +933,7 @@ class myDBSCAN(object):
 		#print "Above???-2??"
 
 
+
 		###############
  		goodT=TBLOcal
 
@@ -935,6 +1014,8 @@ class myDBSCAN(object):
 
 		plt.savefig( region+"dbscanArea.png" ,  bbox_inches='tight',dpi=300)
 		plt.savefig( region+"dbscanArea.pdf" ,  bbox_inches='tight' )
+
+
 
 
 	def getAlphaWithMCMC(self,areaArray,minArea=0.03,maxArea=1.,physicalArea=False,verbose=True,plotTest=False,saveMark="" ):
@@ -1278,7 +1359,8 @@ class myDBSCAN(object):
 	def removeWrongEdges(self,TB):
 
 
-
+		if TB==None:
+			return None
 		processTB=TB.copy()
 
 		#remove cloudsThat touches the noise edge of the fits
@@ -1743,9 +1825,6 @@ class myDBSCAN(object):
 
 
 
-
-
-
 	def areaDistribution(self):
 
 		algDendro="Dendrogram"
@@ -1770,7 +1849,18 @@ class myDBSCAN(object):
 
 		fig=plt.figure(figsize=(18,6))
 		rc('text', usetex=True )
-		rc('font', **{'family': 'sans-serif',  'size'   : 13,  'serif': ['Helvetica'] })
+		rc('font', **{'family': 'sans-serif',  'size'   : 15,  'serif': ['Helvetica'] })
+
+
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
+
 
 		#plot dendrogram
 		axDendro=fig.add_subplot(1,3,1)
@@ -1791,10 +1881,7 @@ class myDBSCAN(object):
 		compoleteArea= 9*(1500./250)**2*0.25/3600. #0.0225
 
 
-
-
 		axDendro.plot( [compoleteArea,compoleteArea],[2,2000],'--',color='black', lw=1  )
-
 
 		axDendro.legend(loc=1, ncol=2 )
 		#plot DBSCAN
@@ -1828,6 +1915,10 @@ class myDBSCAN(object):
 		axSCI.set_xlabel(r"Angular area (deg$^2$)")
 		#axSCI.set_ylabel(r"Bin number of trunks ")
 		axSCI.set_ylabel(r"Number of clusters")
+
+
+
+
 
 		axSCI.set_yscale('log')
 		axSCI.set_xscale('log')
@@ -1873,6 +1964,7 @@ class myDBSCAN(object):
 		fig=plt.figure(figsize=(8,6))
 		rc('text', usetex=True )
 		rc('font', **{'family': 'sans-serif',  'size'   : 10.5,  'serif': ['Helvetica'] })
+		rc('text.latex',  preamble=r'\usepackage{upgreek}')
 
 		mpl.rcParams['text.latex.preamble'] = [
 			r'\usepackage{tgheros}',  # helvetica font
@@ -1894,7 +1986,7 @@ class myDBSCAN(object):
 		axDendro.plot(sigmaListDen,fluxList16Den,'D-' , color="green",markersize=4, lw=1.0,label="Flux (dendrogram)",markerfacecolor='none' )
 
 
-		axDendro.set_ylabel(r"Flux ($\rm K\ km\ s$$^{-1}$ $\Omega_\mathrm{A}$)")
+		axDendro.set_ylabel(r"Flux ($\rm K\ km\ s$$^{-1}$ $\mathrm{\Omega}_\mathrm{A}$)")
 		axDendro.set_xlabel(r"CO cutoff ($\sigma$)")
 
 
@@ -2214,13 +2306,13 @@ class myDBSCAN(object):
 			binN8,binEdges8 = np.histogram( sum8 , bins=areaEdges  )
 			binN16,binEdges16 = np.histogram( sum16 , bins=areaEdges  )
 
-			plot8=ax.plot( areaCenter[binN8>0],binN8[binN8>0], 'o-'  , markersize=1, lw=0.8,label=label8[i] ,alpha= 0.5,color=  clrs[i])
+			plot8 = ax.plot( areaCenter[binN8>0],binN8[binN8>0], 'o-'  , markersize=1, lw=0.8,label=label8[i] ,alpha= 0.5,color=  clrs[i])
 
 			ax.plot( areaCenter[binN16>0],binN16[binN16>0], '^--'  , markersize=1, lw=0.8,label=label16[i] ,alpha= 0.5,color= clrs[i] )
 
 			completeFlux=324*self.rms*0.2*sigmaListDen[i]*3    # K km/s, the last 2 is the two channels
 			print "Complete, ",completeFlux,self.rms,sigmaListDen[i]
-			ax.plot( [completeFlux,completeFlux], [2,3000]   , markersize=1, lw=0.8  ,alpha= 0.5,color= clrs[i] )
+			ax.plot( [completeFlux,completeFlux], [2,3000]   ,'--', markersize=1, lw=0.8  ,alpha= 0.5,color= clrs[i] )
 
 
 
@@ -2234,7 +2326,6 @@ class myDBSCAN(object):
 
 		NUM_COLORS = 12
 		clrs = sns.color_palette('husl', n_colors=NUM_COLORS)  # a list of RGB tuples
-
 
 
 		for i in range( len(tb8List) ):
@@ -2280,6 +2371,7 @@ class myDBSCAN(object):
 	def drawNumber(self,ax,tb8List,tb16List,label8,label16,sigmaListDen ):
 		Nlist8Den=self.getNList(tb8List)
 		Nlist16Den=self.getNList(tb16List)
+
 
 
 		ax.plot(sigmaListDen,Nlist8Den,'o-',label="min\_npix = 8",color="blue",lw=1 , markersize=3 )
@@ -2679,7 +2771,49 @@ class myDBSCAN(object):
 
 		self.setMinVandPeak(dbFITS,COFITS, peakSigma=minDelta+minV,minP=minP)
 
-	def clearnDBAssign(self,DBLabelFITS,DBTableFile	,pixN=8,minDelta=3,minV=2 ,prefix="" ):
+	def cleanLabelFITS(self,dataCluster,TB):
+		"""
+
+		only keep clusters in TB file
+
+		:param data:
+		:param TB:
+		:return:
+		"""
+
+		noiseLabel=np.min( dataCluster[0] )
+		clusterIndex1D= np.where( dataCluster>0 )
+		clusterValue1D=  dataCluster[clusterIndex1D ]
+		Z0,Y0,X0 = clusterIndex1D
+
+		#
+
+		widgets = ['Cleaning label fits:', Percentage(), ' ', Bar(marker='0',left='[',right=']'),  ' ', ETA(), ' ', FileTransferSpeed()] #see docs for other options
+
+		pbar = ProgressBar(widgets=widgets, maxval=len(TB))
+		pbar.start()
+
+		indexRun=0
+
+		returnCluster = np.zeros_like(dataCluster)+noiseLabel
+
+		for eachDBRow in TB:
+			indexRun=indexRun+1
+			pbar.update(indexRun)
+			cloudID=  eachDBRow["_idx"]
+
+
+			cloudIndex = self.getIndices(Z0, Y0, X0, clusterValue1D, cloudID)
+			returnCluster[cloudIndex] = cloudID # remove this cluster and do not record this cluster
+
+
+
+		pbar.finish()
+
+		return returnCluster
+
+
+	def clearnDBAssign(self,DBLabelFITS,DBTableFile	,pixN=8,minDelta=3,minV=2 , MinPts=8 ,  minAreaPix=9, prefix="" ):
 
 		minPeak=(minV+minDelta)*self.rms
 		saveName=prefix+"DBCLEAN{}_{}Label.fits".format( minV, pixN )
@@ -2687,7 +2821,14 @@ class myDBSCAN(object):
 
 		DBTable=Table.read( DBTableFile )
 
+
+
+
 		dataCluster,headCluster=myFITS.readFITS(DBLabelFITS )
+
+
+		noiseLabel=np.min( dataCluster[0] )
+
 
 		clusterIndex1D= np.where( dataCluster>0 )
 		clusterValue1D=  dataCluster[clusterIndex1D ]
@@ -2713,14 +2854,15 @@ class myDBSCAN(object):
 			pixNCloud=int(  eachDBRow["pixN"]  )
 			peakCloud= eachDBRow["peak"]
 
-			if peakCloud < minPeak or pixNCloud< pixN : # set as zero
+			area =  eachDBRow["area_exact"] # by fefault, the area should be in arcmin2
+
+			if peakCloud < minPeak or pixNCloud< pixN or  area< minAreaPix*self.pixelArea : #
 
 				cloudIndex = self.getIndices(Z0, Y0, X0, clusterValue1D, cloudID)
-				dataCluster[cloudIndex] = 0
+				dataCluster[cloudIndex] = noiseLabel # remove this cluster and do not record this cluster
 
 				continue
 
-			#edge
 
 
 			emptyTB.add_row( eachDBRow  )
@@ -4270,8 +4412,8 @@ class myDBSCAN(object):
 		#add well-known star forming regions
 
 		#W40 LBN 028.77+03.43
-		fontAlpha=0.75
-		fontSize=14
+		fontAlpha=1
+		fontSize=15
 		fontColor="white"
 		lw=1.2
 		import matplotlib.patheffects as path_effects
@@ -4398,7 +4540,7 @@ class myDBSCAN(object):
 	def drawLV(self,  vRange=[-6, 30]):
 		"""
 		drawPVDiagram of CO12
-		:param LVFITS:
+		:param LVFITS:s
 		:return:
 		"""
 
@@ -4925,7 +5067,7 @@ class myDBSCAN(object):
 		#print vAxis.real.to_value()
 		wcsCO=WCS(headCO)
 
- 		vAxis= vAxis.value/1000. #convert to rms
+		vAxis= vAxis.value/1000. #convert to rms
 
 		noiseV=np.nanmin( dataLabel[0] )
 		index1D=np.where(dataLabel > noiseV)
@@ -5041,9 +5183,9 @@ class myDBSCAN(object):
 
 		return np.asarray( lineWdith )
 
-	def getExamineSpectral(self):
+	def getExamineSpectral(self,savePath="./spectralLineOfAll/" ):
 
-		savePath="./spectralLineOfAll/" #this path saves a tb file, and alll spectral for each clouds
+		#savePath="./spectralLineOfAll/" #this path saves a tb file, and alll spectral for each clouds
 
 		allFiles=glob.glob(savePath+"*.npy")
 
@@ -5051,6 +5193,12 @@ class myDBSCAN(object):
 		ax = figVVV.add_subplot(1, 1, 1)
 		rc('text', usetex=True)
 		rc('font', **{'family': 'sans-serif', 'size': 14, 'serif': ['Helvetica']})
+
+
+
+		#should add spectral here
+
+
 
 		for eachF in allFiles:
 			pass
@@ -5764,19 +5912,26 @@ class myDBSCAN(object):
 		#0.5 672
 		#-0.5, 552
 
+		#-1, 492
+		#1, 732
+
+		cutB=1.
+		cutIndex1=492
+		cutIndex2=732
+
 		print algDendro
 		for eachT in tb8Den:
 			print "Ratio of max flux",np.max( eachT["flux"])/np.sum(   eachT["flux"] )
 
 			if np.max( eachT["y_cen"] )>10:
 
-				select= np.logical_and( eachT["y_cen"]>=552, eachT["y_cen"]<= 672  )
+				select= np.logical_and( eachT["y_cen"]>=cutIndex1, eachT["y_cen"]<= cutIndex2  )
 				perSeusTB=eachT[select]
 				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
 
 
 			else:
-				select= np.logical_and( eachT["y_cen"]>=-0.5, eachT["y_cen"]<= 0.5  )
+				select= np.logical_and( eachT["y_cen"]>=-cutB, eachT["y_cen"]<= cutB  )
 				perSeusTB=eachT[select]
 				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
 			#print eachT["y_cen"].unit
@@ -5789,13 +5944,13 @@ class myDBSCAN(object):
 
 			if np.max( eachT["y_cen"] )>10:
 
-				select= np.logical_and( eachT["y_cen"]>=552, eachT["y_cen"]<= 672  )
+				select= np.logical_and( eachT["y_cen"]>=cutIndex1, eachT["y_cen"]<= cutIndex2  )
 				perSeusTB=eachT[select]
 				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
 
 
 			else:
-				select= np.logical_and( eachT["y_cen"]>=-0.5, eachT["y_cen"]<= 0.5  )
+				select= np.logical_and( eachT["y_cen"]>=- cutB , eachT["y_cen"]<= cutB  )
 				perSeusTB=eachT[select]
 				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
 			#print eachT["y_cen"].unit
@@ -5806,18 +5961,361 @@ class myDBSCAN(object):
 
 			if np.max( eachT["y_cen"] )>10:
 
-				select= np.logical_and( eachT["y_cen"]>=552, eachT["y_cen"]<= 672  )
+				select= np.logical_and( eachT["y_cen"]>=cutIndex1 , eachT["y_cen"]<= cutIndex2  )
 				perSeusTB=eachT[select]
 				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
 
 
 			else:
-				select= np.logical_and( eachT["y_cen"]>=-0.5, eachT["y_cen"]<= 0.5  )
+				select= np.logical_and( eachT["y_cen"]>=- cutB , eachT["y_cen"]<=cutB  )
 				perSeusTB=eachT[select]
 				print "Ratio of Perseus Clouds", len(perSeusTB)/1./len(eachT)
 			#print eachT["y_cen"].unit
 
-	def ZZZZZZ(self):
+	def getTablesByPath(self,CORawFITS,processPath):
+
+		"""
+
+		:param processPath:
+		:return:
+		"""
+
+		labelFITS=glob.glob(processPath+"*.fits")
+
+		for eachLabel in labelFITS:
+
+			#fileName= os.path.split(eachLabel )[-1][:-5]
+
+			self.getCatFromLabelArray(CORawFITS, eachLabel,  self.TBModel, saveMarker=eachLabel[0:-5]  )
+
+	def getDBSCANTBList(self,conType,PixList,processPath):
+
+		TBList= []
+		TBCount= []
+
+		for eachPix in PixList:
+
+			searchStr =  processPath+"*P{}Con{}.fit".format(eachPix,conType)
+			tbFile=glob.glob( searchStr  )[0]
+			tb=  Table.read(tbFile)
+			TBList.append( tb )
+
+			TBCount.append( len(tb) )
+
+		#print len(Table.read(tbFile)   )
+
+
+		return TBList,TBCount
+
+	def drawTestDBSCAN(self, processPath ):
+
+		"""
+
+		:return:
+		"""
+		TableFiles=glob.glob(processPath+"*.fits")
+
+		connect2PixList= [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+		connect1PixList=   [3,4,5,6,7 ]
+		connect3PixList= [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27]
+
+		TBCon1,countCon1 = self.getDBSCANTBList(  1, connect1PixList,  processPath)
+		TBCon2,countCon2 = self.getDBSCANTBList(  2, connect2PixList,  processPath)
+		TBCon3 ,countCon3= self.getDBSCANTBList(  3, connect3PixList,  processPath)
+
+
+		#draw
+
+		fig = plt.figure(figsize=(10, 6))
+		ax = fig.add_subplot(1, 1, 1)
+		# fig, axs = plt.subplots(nrows=1, ncols=2,  figsize=(12,6),sharex=True)
+		rc('text', usetex=True)
+		rc('font', **{'family': 'sans-serif', 'size': 15, 'serif': ['Helvetica']})
+
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
+		scatterSize=14
+
+		ax.plot( connect1PixList, countCon1,'b--' ,lw=1.5)
+		ax.scatter( connect1PixList, countCon1, color='b',s= scatterSize )
+
+		
+		ax.plot( connect2PixList, countCon2,'g--',lw=1.5)
+		ax.scatter( connect2PixList, countCon2, color='g',s= scatterSize )
+
+
+
+		ax.plot( connect3PixList, countCon3,'r--',lw=1.5)
+		ax.scatter( connect3PixList, countCon3, color='r',s= scatterSize )
+		print connect3PixList
+		print countCon3
+		ax.set_xlim(2,27)
+		#ax.set_ylim(-1,12)
+
+		ax.set_ylabel("Fasely detected numbers")
+
+		ax.set_xlabel("minPts")
+		
+		plt.savefig("dbscanTestParameter.png" , bbox_inches='tight')
+
+	def countTBNlist(self,TBList):
+
+		nList=[]
+
+		for eachTB in TBList:
+			nList.append( len(eachTB) )
+
+		return nList
+
+	def cleanUMMCTB(self,inputTB,rmsData,minValue=2.0, minPix=3, minDelta=1):
+		"""
+		clearn DBSCAN table according to minPix and minDelta
+		:param TB:
+		:param minPix:
+		:param minDelta:
+		:return:
+		"""
+
+
+
+		if type(inputTB) is list:
+
+			newTBlist = []
+
+			for eachTB in inputTB:
+				TB = eachTB.copy()
+
+				# need to convert peakvalue into sigma
+
+				peakBIndex = TB["peakB"]  # the unit of peakB is
+				peakLIndex = TB["peakL"]  # the unit of peakL is
+
+				peakBIndex = map(int, peakBIndex)
+				peakLIndex = map(int, peakLIndex)
+
+				cooridnates = tuple([peakBIndex, peakLIndex])
+
+				peakSigma = TB["peak"] / rmsData[cooridnates]
+
+				minPeakSigma = minValue + minDelta
+
+				select1 = TB[peakSigma >= minPeakSigma]  # based on minDelta
+				select2 = select1[select1["pixN"] >= minPix]
+
+				newTBlist.append( select2 )
+			return newTBlist
+		else:
+
+			TB=inputTB.copy()
+
+			#need to convert peakvalue into sigma
+
+			peakBIndex=TB["peakB"] #the unit of peakB is
+			peakLIndex=TB["peakL"] #the unit of peakL is
+
+			peakBIndex= map(int, peakBIndex)
+			peakLIndex= map(int, peakLIndex)
+
+			cooridnates= tuple( [ peakBIndex ,peakLIndex  ] )
+
+			peakSigma= TB["peak"] /rmsData[cooridnates]
+
+			minPeakSigma=minValue+minDelta
+
+			select1 = TB[ peakSigma>= minPeakSigma] #based on minDelta
+
+			select2= select1[ select1["pixN"]>=minPix]
+			return select2
+
+	def relabelDBWithRMSFITS(self,FITSLabel,FITSTB, rmsFITS,  minPix=8,minDelta=3,minValue=2):
+		"""
+
+		:param FITSLabel:
+		:param FITSTB:
+		:param minPix:
+		:param minDelta:
+		:param minValue:
+		:return:
+		"""
+		#first, get the sub TB
+		rmsData,rmsHead = myFITS.readFITS(rmsFITS   )
+		rawTB=Table.read(  FITSTB )
+
+		goodCloudList= self.cleanUMMCTB( rawTB , rmsData,  minValue=minValue, minPix=minPix,minDelta=minDelta ) #self,inputTB,rmsData,minValue=2.0, minPix=3, minDelta=1):
+
+
+		dataCluster,headCluster=myFITS.readFITS(FITSLabel)
+
+		clusterIndex1D= np.where( dataCluster>0 )
+		clusterValue1D=  dataCluster[clusterIndex1D ]
+
+		Z0,Y0,X0 = clusterIndex1D
+		
+
+
+		newLabel=np.zeros_like( dataCluster )
+
+		print "Cleaning DBSCAN UMMC table..."
+
+		widgets = ['Recalculating cloud parameters: ', Percentage(), ' ', Bar(marker='0',left='[',right=']'),  ' ', ETA(), ' ', FileTransferSpeed()] #see docs for other options
+
+		pbar = ProgressBar(widgets=widgets, maxval=len(goodCloudList))
+		pbar.start()
+
+		indexRun=0
+		for eachDBRow in goodCloudList:
+			indexRun=indexRun+1
+			pbar.update(indexRun)
+
+			cloudID=  eachDBRow["_idx"]
+
+			cloudIndex = self.getIndices(Z0, Y0, X0, clusterValue1D, cloudID)
+			newLabel[cloudIndex] =  cloudID
+
+		pbar.finish()
+
+		fits.writeto( "UMMCFormaClouds.fits",newLabel,header=headCluster,overwrite=True)
+
+
+
+	def testMinDelta(self,processPath):
+ 		"""
+ 		test the effect of minDelta, i.e., the peak value
+ 		:param processPath:
+ 		:return:
+ 		"""
+
+		CO12RMSFITS = "/home/qzyan/WORK/projects/NewUrsaMajorPaper/rmsGood_UMMC_CO12_CropEmpyt.fits"
+		rmsData, rmsHead = myFITS.readFITS(CO12RMSFITS)
+
+		connect2PixList = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+		connect1PixList = [3, 4, 5, 6, 7]
+		connect3PixList = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+
+		TBCon1, countCon1 = self.getDBSCANTBList(1, connect1PixList, processPath)
+		TBCon2, countCon2 = self.getDBSCANTBList(2, connect2PixList, processPath)
+		TBCon3, countCon3 = self.getDBSCANTBList(3, connect3PixList, processPath)
+
+		# draw
+		fig = plt.figure(figsize=(10, 6))
+		ax = fig.add_subplot(1, 1, 1)
+		# fig, axs = plt.subplots(nrows=1, ncols=2,  figsize=(12,6),sharex=True)
+		rc('text', usetex=True)
+		rc('font', **{'family': 'sans-serif', 'size': 15, 'serif': ['Helvetica']})
+
+		mpl.rcParams['text.latex.preamble'] = [
+			r'\usepackage{tgheros}',  # helvetica font
+			r'\usepackage{sansmath}',  # math-font matching  helvetica
+			r'\sansmath'  # actually tell tex to use it!
+			r'\usepackage{siunitx}',  # micro symbols
+			r'\sisetup{detect-all}',  # force siunitx to use the fonts
+		]
+
+		scatterSize = 14
+
+		testDeltaList=  [  2,3]
+
+		minPixTest=15
+
+		if 1:#test connectivity
+
+			for eachDelta in  testDeltaList :
+
+				tempTB=self.cleanUMMCTB( TBCon1,rmsData,minValue=2.0, minPix=minPixTest, minDelta=eachDelta)
+				tempTBCount= self.countTBNlist( tempTB  )
+				print tempTBCount
+				ax.plot(connect1PixList, tempTBCount,'--', marker=11, lw=1.5)
+				#ax.scatter(connect1PixList, tempTBCount, color='b', s=scatterSize)
+
+			for eachDelta in testDeltaList:
+				tempTB = self.cleanUMMCTB(TBCon2, rmsData, minValue=2.0, minPix=minPixTest, minDelta=eachDelta)
+				tempTBCount = self.countTBNlist(tempTB)
+				print tempTBCount
+				ax.plot(connect2PixList, tempTBCount, '-', marker=3, lw=1.5)
+			# ax.scatter(connect1PixList, tempTBCount, color='b', s=scatterSize)
+
+			for eachDelta in testDeltaList:
+				tempTB = self.cleanUMMCTB(TBCon3, rmsData, minValue=2.0, minPix=minPixTest, minDelta=eachDelta)
+				tempTBCount = self.countTBNlist(tempTB)
+				print tempTBCount
+				ax.plot(connect3PixList, tempTBCount, '-', marker=5, lw=1.5)
+			# ax.scatter(connect1PixList, tempTBCount, color='b', s=scatterSize)
+
+
+		if 0:
+			ax.plot(connect1PixList, countCon1, 'b--', lw=1.5)
+			ax.scatter(connect1PixList, countCon1, color='b', s=scatterSize)
+
+			ax.plot(connect2PixList, countCon2, 'g--', lw=1.5)
+			ax.scatter(connect2PixList, countCon2, color='g', s=scatterSize)
+
+			ax.plot(connect3PixList, countCon3, 'r--', lw=1.5)
+			ax.scatter(connect3PixList, countCon3, color='r', s=scatterSize)
+
+
+		ax.set_xlim(2, 27)
+		# ax.set_ylim(-1,12)
+
+		ax.set_ylabel("Fasely detected numbers")
+
+		ax.set_xlabel("minPts")
+
+		plt.savefig("dbscanTestMinDelta.png", bbox_inches='tight')
+
+
+	def DBSCANAllInOne(self, rawCOFITS, saveTag, rmsFITS=None, minDelta = 3, minValue=2, minPix=8, MinPts=8, sigma=0.5 ,    minAreaPix=9  ,  connectivity=2,outPath="./" ,  ):
+		"""
+
+		:param rawCOFITS:
+		:param saveTag:
+		:param rmsFITS:
+		:param minDelta:
+		:param minValue:
+		:param minPix:
+		:param sigma:
+		:return:
+
+		"""
+
+		#used to save
+		tmpPath="./dbscanTmp/"
+
+		dataCO, headCO= myFITS.readFITS( rawCOFITS )
+
+		#step 1 compute DBSCAN
+		print "Step 1: computing DBSCAN......"
+
+		dbscanLabelFITS= self.computeDBSCAN(dataCO, headCO,  min_sigma= minValue , min_pix=MinPts , connectivity=connectivity, region= tmpPath+saveTag , rmsFITS= None, inputRMS= sigma  )
+
+		print "Step 2: computing DBSCAN table......"
+		rawDBSCANTBFile = self.getCatFromLabelArray(rawCOFITS,  dbscanLabelFITS , self.TBModel, minPix=minPix, rms=minValue , saveMarker=tmpPath+saveTag )
+
+		print "Step 2: clean DBSCAN clusters..."
+
+		self.clearnDBAssign( dbscanLabelFITS, rawDBSCANTBFile, pixN=minPix, minDelta=minDelta, minV=minValue , minAreaPix=minAreaPix,   prefix=outPath+saveTag+"_" )
+
+	def cleanAndGetCatalog(self,rawCOFITS, labelFITS,saveTag, minDelta=3, rms=0.5,minPix=8,minValue=2):
+		"""
+		# labelFITS, is the fits created by HDBSCAN or DBSCAN or any other programs
+
+		:param labelFITS:
+		:param saveTag:
+		:param minDelta:
+		:param minPix, only used for saving
+		:return:
+		"""
+
+		rawTBFile = self.getCatFromLabelArray(rawCOFITS, labelFITS, self.TBModel, minPix=minPix,  rms=rms, saveMarker= saveTag)
+		self.clearnDBAssign( labelFITS, rawTBFile, pixN=minPix, minDelta=minDelta, minV=minValue ,prefix=  saveTag+"_" )
+
+
+def ZZZZZZ(self):
 		pass
 		"""
 		draw a simple map for over all moment of local molecular clouds
@@ -5826,24 +6324,267 @@ class myDBSCAN(object):
 
 
 
-doDBSCAN=myDBSCAN()
-
-G2650CO12FITS="/home/qzyan/WORK/myDownloads/testFellwalker/WMSIPDBSCAN/G2650Local30.fits"
-DBMaskFITS= "/home/qzyan/WORK/myDownloads/testFellwalker/G2650DB_1_25.fits"
-TaurusCO12FITS="/home/qzyan/WORK/dataDisk/Taurus/t12_new.fits"
-PerCO12="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Per3060.fits"
-
-localCO13="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Local30CO13.fits"
-
-G210CO12="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO12sm.fits"
-G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
-
-ursaMajor=""
-G2650MaskCO = "G2650CO12MaskedCO.fits"
-
-G2650MaskCODendro = "G2650CO12DendroMaskedCO.fits"
 
 if 1:
+
+	doDBSCAN=myDBSCAN()
+
+	G2650CO12FITS="/home/qzyan/WORK/myDownloads/testFellwalker/WMSIPDBSCAN/G2650Local30.fits"
+	DBMaskFITS= "/home/qzyan/WORK/myDownloads/testFellwalker/G2650DB_1_25.fits"
+	TaurusCO12FITS="/home/qzyan/WORK/dataDisk/Taurus/t12_new.fits"
+	PerCO12="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Per3060.fits"
+
+	localCO13="/home/qzyan/WORK/dataDisk/MWISP/G2650/merge/G2650Local30CO13.fits"
+
+	G210CO12="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO12sm.fits"
+	G210CO13="/home/qzyan/WORK/myDownloads/newMadda/data/G210CO13sm.fits"
+
+	ursaMajor=""
+	G2650MaskCO = "G2650CO12MaskedCO.fits"
+
+	G2650MaskCODendro = "G2650CO12DendroMaskedCO.fits"
+
+
+
+
+
+
+# G2650Figures
+if 0:
+	# doDBSCAN.drawOverallMoment()
+	# doDBSCAN.drawLV()
+
+	# doDBSCAN.numberDistribution()
+	# doDBSCAN.drawCheckCloudsOneChannel()
+	# doDBSCAN.drawSpectraExample()
+
+	# doDBSCAN.drawVeDistribution(useGauss=True)
+	# doDBSCAN.drawPeakDistribution()
+
+	# doDBSCAN.areaDistribution()
+
+	doDBSCAN.alphaDistribution()
+	# doDBSCAN.alphaDistribution( onlyLocal=True )
+
+	# doDBSCAN.fluxAlphaDistribution()
+	# doDBSCAN.fluxAlphaDistribution(onlyLocal=True)
+
+	# doDBSCAN.fluxDistribution()
+	# doDBSCAN.totaFluxDistribution()
+	# doDBSCAN.physicalAreaDistribution()
+
+	# doDBSCAN.physicalAreaDistributionLocal()
+
+	sys.exit()
+
+	pass
+
+if 0:  #
+	pass
+	saveTag = "./sparseTest/HDBTESTCH_sparse"
+	rawCO12fits = "sparseHDBSCAN.fits"  # "testHDBSCANCH_3.fits"
+	labelFITS = "./sparseTest/HDBTESTCH_sparse.fits"
+
+	doDBSCAN.cleanAndGetCatalog(rawCO12fits, labelFITS, saveTag)
+	sys.exit()
+
+if 0:  # #DBSCAN, find clouds at a spare region
+
+	rawCO12fits = "sparseHDBSCAN.fits"  #"testHDBSCANCH_3.fits"
+
+	#co12FITSInRMS = "/home/qzyan/WORK/projects/NewUrsaMajorPaper/UMMCCO12InRmsUnit.fits"
+	saveTag = "DBSCANCH_sparse"
+	doDBSCAN.DBSCANAllInOne(rawCO12fits, saveTag, rmsFITS=None, minDelta=3, minValue=2, minPix=8, MinPts=8, sigma=0.5, connectivity=2, outPath="./sparseTest/")
+
+	sys.exit()
+
+
+
+if 0:#
+	pass
+	saveTag = "./testHdbscan/HDBTESTCH_3_small"
+	rawCO12fits = "hdbscanCH_3_small.fits"  #"testHDBSCANCH_3.fits"
+	labelFITS=  "./testHdbscan/HDBTESTCH_3_small.fits" 
+	
+	doDBSCAN.cleanAndGetCatalog(rawCO12fits,labelFITS,saveTag  )
+	sys.exit()
+
+
+
+if 0:#get catalog for HDBSCAN
+	saveTag = "./testHdbscan/HDBTESTCH_3"
+
+	rawCOFITS = "testHDBSCANCH_3.fits"
+	dbscanLabelFITS="/home/qzyan/WORK/myDownloads/MWISPcloud/testHdbscan/HDBTESTCH_3.fits"
+	rawDBSCANTBFile = doDBSCAN.getCatFromLabelArray(rawCOFITS, dbscanLabelFITS, doDBSCAN.TBModel, minPix=8, rms=0.5, saveMarker= saveTag)
+
+	sys.exit()
+
+
+
+
+if 0:  # #DBSCAN, find clouds
+
+	rawCO12fits = "hdbscanCH_3_small.fits"  #"testHDBSCANCH_3.fits"
+
+	#co12FITSInRMS = "/home/qzyan/WORK/projects/NewUrsaMajorPaper/UMMCCO12InRmsUnit.fits"
+	saveTag = "DBSCANCH_3_small"
+
+	doDBSCAN.DBSCANAllInOne(rawCO12fits, saveTag, rmsFITS=None, minDelta=3, minValue=2, minPix=8, MinPts=8, sigma=0.5,
+							connectivity=2, outPath="./testHdbscan/")
+
+	sys.exit()
+
+
+if 0:# #DBSCAN, find clouds
+
+	
+	rawCO12fits =  "/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/UMMC_CO12_Crop.fits"
+
+	co12FITSInRMS = "/home/qzyan/WORK/projects/NewUrsaMajorPaper/UMMCCO12InRmsUnit.fits"
+	saveTag="DBSCANInRMSUNIT"
+
+
+	doDBSCAN.DBSCANAllInOne(co12FITSInRMS, saveTag, rmsFITS=None, minDelta=3, minValue=2, minPix=8, MinPts=4, sigma=1 , connectivity=1, outPath="./UMMCFormal/"  )
+
+	sys.exit()
+
+
+if 0:#[30, 60] km/s DBSCAN, 12CO, sagitarius
+
+	#rawCOFITS="/home/qzyan/WORK/myDownloads/MWISPcloud/G2650V3060/G2650V3060Sub.fits"
+	#saveTag="G2650TestSagitarius"
+
+	rawCOFITS="/home/qzyan/WORK/myDownloads/MWISPcloud/G2650V3060/G2650V3060CO13.fits"
+	saveTag="G2650V3060CO13"
+
+	doDBSCAN.DBSCANAllInOne(rawCOFITS, saveTag, rmsFITS=None, minDelta=3, minValue=2, minPix=8, MinPts=8, sigma=0.3 , connectivity=2, outPath="./G2650V3060/"  )
+
+	sys.exit()
+
+
+if 0:#test DBSCAN
+
+	rawCOFITS="/home/qzyan/WORK/myDownloads/MWISPcloud/G2650V3060/G2650V3060Sub.fits"
+	saveTag="G2650V3060MimicDendro"
+
+	doDBSCAN.DBSCANAllInOne(rawCOFITS, saveTag, rmsFITS=None, minDelta=3.00, minValue=2, minPix=8, MinPts=3, sigma=0.5 , connectivity=1   )
+
+	sys.exit()
+if 0:#[30, 60] km/s DBSCAN
+
+	#rawCOFITS="/home/qzyan/WORK/myDownloads/MWISPcloud/G2650V3060/G2650V3060Sub.fits"
+	#saveTag="G2650TestSagitarius"
+
+	rawCOFITS="/home/qzyan/WORK/myDownloads/MWISPcloud/G2650V3060/G2650Per3060.fits"
+	saveTag="G2650V3060"
+
+	doDBSCAN.DBSCANAllInOne(rawCOFITS, saveTag, rmsFITS=None, minDelta=3, minValue=2, minPix=8, MinPts=8, sigma=0.5 , connectivity=2, outPath="./G2650V3060/"  )
+
+
+
+	sys.exit()
+
+if 0: #testDBSCAN with empty cubes, which
+	rawCOfits= "/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/UMMC_CO12_Crop.fits"
+	UMMCCO12DataTrue,UMMCCO12HeadTrue=myFITS.readFITS( rawCOfits )
+	CO12RMSFITS = "/home/qzyan/WORK/projects/NewUrsaMajorPaper/rmsGood_UMMC_CO12_CropEmpyt.fits"
+	savePathUMMC = "./UMMCFormal/"
+	#doDBSCAN.computeDBSCAN(UMMCCO12DataTrue, UMMCCO12HeadTrue, min_sigma=2, min_pix=8, connectivity=2,  region=savePathUMMC + "UMMCSignal_", rmsFITS=CO12RMSFITS)
+
+	#doDBSCAN.getCatFromLabelArray( rawCOfits ,  "/home/qzyan/WORK/myDownloads/MWISPcloud/UMMCFormal/UMMCSignal_dbscanS2P8Con2.fits",   doDBSCAN.TBModel, saveMarker= "UMMCCO12RawTB")
+
+
+	labelFITS=  "/home/qzyan/WORK/myDownloads/MWISPcloud/UMMCFormal/UMMCSignal_dbscanS2P8Con2.fits"
+	rawTBFile= "UMMCCO12RawTB.fit" 
+	doDBSCAN.relabelDBWithRMSFITS( labelFITS ,   rawTBFile ,  CO12RMSFITS  )
+
+
+	sys.exit()
+
+if 0:# test minDelta
+
+	processPath= "./UMMCTest/"
+	doDBSCAN.testMinDelta( processPath )
+	sys.exit()
+
+
+
+
+if 0:
+	CO12RMSFITS = "/home/qzyan/WORK/projects/NewUrsaMajorPaper/rmsGood_UMMC_CO12_CropEmpyt.fits"
+	rmsData,rmsHead=myFITS.readFITS( CO12RMSFITS )
+	testTB=Table.read("./UMMCTest/UMMCNoise_dbscanS2P8Con2.fit")
+
+	doDBSCAN.cleanUMMCTB(testTB,rmsData,minDelta=3,minValue=2,minPix=3)
+
+	sys.exit()
+
+
+
+
+if 0: #draw TB test results
+	processPath= "./UMMCTest/"
+
+	doDBSCAN.drawTestDBSCAN( processPath )
+
+	sys.exit()
+
+if 0:#Calculate all tables in a path folder
+	CORawFITS="/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/UMMC_CO12_CropEmpty.fits"
+
+	processPath= "./UMMCTest/"
+	doDBSCAN.getTablesByPath(CORawFITS,processPath)
+
+	sys.exit()
+
+
+
+if 0: #testDBSCAN with empty cubes, which
+
+	UMMCCO12Data,UMMCCO12Head=myFITS.readFITS("/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/UMMC_CO12_CropEmpty.fits")
+
+	CO12RMSFITS = "/home/qzyan/WORK/projects/NewUrsaMajorPaper/rmsGood_UMMC_CO12_CropEmpyt.fits"
+	savePathUMMC = "./UMMCTest/"
+	for minPixs in [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]:
+		doDBSCAN.computeDBSCAN(UMMCCO12Data, UMMCCO12Head, min_sigma=2, min_pix=minPixs, connectivity=2, region=savePathUMMC+"UMMCNoise_",rmsFITS= CO12RMSFITS)
+
+	for minPixs in [3,4,5,6,7 ]:
+		doDBSCAN.computeDBSCAN(UMMCCO12Data, UMMCCO12Head, min_sigma=2, min_pix=minPixs, connectivity=1, region=savePathUMMC+"UMMCNoise_" ,rmsFITS= CO12RMSFITS)
+
+	for minPixs in [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27]:
+		doDBSCAN.computeDBSCAN(UMMCCO12Data, UMMCCO12Head, min_sigma=2, min_pix=minPixs, connectivity=3, region=savePathUMMC+"UMMCNoise_" ,rmsFITS= CO12RMSFITS)
+
+
+
+	sys.exit()
+
+
+
+if 0: # DBSCAN test completeness
+
+	UMMCCO12Data,UMMCCO12Head=myFITS.readFITS("/home/qzyan/WORK/projects/NewUrsaMajorPaper/OriginalFITS/UMMC_CO12_CropEmpty.fits")
+
+	CO12RMSFITS = "/home/qzyan/WORK/projects/NewUrsaMajorPaper/rmsGood_UMMC_CO12_CropEmpyt.fits"
+
+
+	savePathUMMC = "./UMMCTest/"
+	for minPixs in [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]:
+		doDBSCAN.computeDBSCAN(UMMCCO12Data, UMMCCO12Head, min_sigma=2, min_pix=minPixs, connectivity=2, region=savePathUMMC+"UMMC_completeness_" )
+
+	#for minPixs in [3,4,5,6,7 ]:
+		#doDBSCAN.computeDBSCAN(UMMCCO12Data, UMMCCO12Head, min_sigma=2, min_pix=minPixs, connectivity=1, region=savePathUMMC+"UMMC_" )
+
+	#for minPixs in [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27]:
+		#doDBSCAN.computeDBSCAN(UMMCCO12Data, UMMCCO12Head, min_sigma=2, min_pix=minPixs, connectivity=3, region=savePathUMMC+"UMMC_" )
+
+
+	sys.exit()
+
+
+
+
+if 0:
 	TBName="/home/qzyan/WORK/myDownloads/Q3/Q3LocalDendroCO12minV2minP8_dendroCatTrunk.fit"
 	doDBSCAN.drawAreaDistribute(TBName, region="Q3")
 
@@ -5851,6 +6592,7 @@ if 1:
 
 if 0:
 	doDBSCAN.testLargestFluxRatio()
+	sys.exit()
 
 if 0:
 	doDBSCAN.testAngularAndLineWith()
@@ -5860,49 +6602,10 @@ if 0:
 
 
 
-#G2650Figures
-if 1:
-
-	#doDBSCAN.drawOverallMoment()
-	#doDBSCAN.drawLV()
-
-	#doDBSCAN.numberDistribution()
-	#doDBSCAN.drawCheckCloudsOneChannel()
-	#doDBSCAN.drawSpectraExample()
 
 
 
-	#doDBSCAN.drawVeDistribution(useGauss=True)
-	#doDBSCAN.drawPeakDistribution()
-
-	#doDBSCAN.areaDistribution()
-
-	#doDBSCAN.alphaDistribution()
-	#doDBSCAN.alphaDistribution( onlyLocal=True )
-
-
-	#doDBSCAN.fluxAlphaDistribution()
-	#doDBSCAN.fluxAlphaDistribution(onlyLocal=True)
-
-
-
-	#doDBSCAN.fluxDistribution()
-	doDBSCAN.totaFluxDistribution()
-	#doDBSCAN.physicalAreaDistribution()
-
-	#doDBSCAN.physicalAreaDistributionLocal()
-
-
-
-
-	
-
-	sys.exit()
-
-	pass
-
-
-if 1:
+if 0:
 
 	#label1FITS="minV2minP8_TrunkAsign.fits"
 	#label2FITS="minV2minP16_TrunkAsign.fits"
@@ -5948,8 +6651,6 @@ if 1:
 
 
 
-
-
 if 0:  # compare distributions
 
 	doDBSCAN.printCatNumbers()
@@ -5963,8 +6664,6 @@ if 0:  # compare distributions
 
 
 	sys.exit()
-
-
 
 
 
@@ -5983,16 +6682,11 @@ if 0:
 	sys.exit()
 
 
-
-
 if 0:
 
 
 	doDBSCAN.physicalAreaDistribution()
 	sys.exit()
-
-
-
 
 
 
@@ -6067,21 +6761,9 @@ if 0:
 
 
 
-
-
-
-
 if 0:
 
 	doDBSCAN.produceSingleCubesForEachCloud( "G2650minV2minP8_TrunkAsignMask0.fits" ,  "minV2minP8_dendroCatTrunk.fit" )
-
-
-
-
-
-
-
-
 
 
 
@@ -6146,23 +6828,9 @@ if 0: #
 
 
 
-
-
-
-
-
-
-
-
-
 if 0:
 	#doDBSCAN.getVdispersion()
 	sys.exit()
-
-
-
-
-
 
 
 
